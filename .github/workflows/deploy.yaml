@@ -1,0 +1,79 @@
+name: Deploy FitCrew Production
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fitcrew-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy FitCrew to Production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout production commit
+        uses: actions/checkout@v6
+
+      - name: Build production payload
+        shell: bash
+        run: |
+          rm -rf .deploy
+          mkdir -p .deploy
+
+          rsync -a ./ .deploy/ \
+            --exclude='.deploy/' \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='.env' \
+            --exclude='.env.*' \
+            --exclude='.gitignore' \
+            --exclude='README.md' \
+            --exclude='docs/' \
+            --exclude='tests/' \
+            --exclude='branding/' \
+            --exclude='CHANGED_FILES.txt' \
+            --exclude='DELETE_THESE_FILES.txt' \
+            --exclude='PHASE1B_ROOT_APPLY.txt'
+
+      - name: Deploy production files
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.6
+        with:
+          server: ${{ secrets.SFTP_HOST }}
+          username: ${{ secrets.SFTP_USER }}
+          password: ${{ secrets.SFTP_PASS }}
+          port: ${{ secrets.SFTP_PORT }}
+          local_path: './.deploy/*'
+          remote_path: ${{ secrets.PROD_PATH }}
+          sftp_only: true
+          delete_remote_files: false
+
+      - name: Deploy root security file
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.6
+        with:
+          server: ${{ secrets.SFTP_HOST }}
+          username: ${{ secrets.SFTP_USER }}
+          password: ${{ secrets.SFTP_PASS }}
+          port: ${{ secrets.SFTP_PORT }}
+          local_path: './.deploy/.htaccess'
+          remote_path: ${{ secrets.PROD_PATH }}
+          sftp_only: true
+          delete_remote_files: false
+
+      - name: Deploy assets security file
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.6
+        with:
+          server: ${{ secrets.SFTP_HOST }}
+          username: ${{ secrets.SFTP_USER }}
+          password: ${{ secrets.SFTP_PASS }}
+          port: ${{ secrets.SFTP_PORT }}
+          local_path: './.deploy/assets/.htaccess'
+          remote_path: '${{ secrets.PROD_PATH }}assets/'
+          sftp_only: true
+          delete_remote_files: false
