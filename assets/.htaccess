@@ -1,0 +1,8 @@
+# Runtime assets are public, but executable/server-side files are not.
+Options -Indexes
+
+<IfModule mod_authz_core.c>
+    <FilesMatch "\.(?:php|phtml|phar|cgi|pl|py|sh)$">
+        Require all denied
+    </FilesMatch>
+</IfModule>

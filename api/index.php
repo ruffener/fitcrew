@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-require_once dirname(__DIR__, 2) . '/inc/bootstrap.php';
+require_once dirname(__DIR__) . '/inc/bootstrap.php';
 
 fc_response_code(501);
 header('Content-Type: application/json; charset=utf-8');

@@ -30,3 +30,20 @@
 - Apple Health.
 - Final SQL.
 - Google Sheets prototype modification.
+
+## Phase 1B Architecture Amendment
+
+The original Phase 1 authorization used a separate `public/` document root.
+
+That historical plan is preserved above as the accepted Phase 1 record, but the runtime architecture is now superseded by the Phase 1B root web-root amendment:
+
+```text
+Project/document root:
+C:\laragon\www\fitcrew
+```
+
+Sensitive directories and root configuration files are protected through the explicit Apache rules documented in:
+
+```text
+docs/root_web_security.md
+```

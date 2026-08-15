@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-require_once dirname(__DIR__, 3) . '/inc/bootstrap.php';
+require_once dirname(__DIR__, 2) . '/inc/bootstrap.php';
 
 fc_response_code(501);
 $title = 'Google Health Disconnect';

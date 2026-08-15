@@ -1,0 +1,23 @@
+Phase 1B root-web architecture supersedes the public/ document-root structure.
+
+Delete these tracked files after copying the patch:
+
+assets/design/notes.md
+public/api/index.php
+public/app.php
+public/assets/css/app.css
+public/assets/img/.gitkeep
+public/assets/js/app.js
+public/forgot-password.php
+public/health/google/callback.php
+public/health/google/connect.php
+public/health/google/disconnect.php
+public/health/google/status.php
+public/index.php
+public/login.php
+public/logout.php
+public/register.php
+public/reset-password.php
+
+The entire public/ directory should be gone after deletion.
+If assets/design/ is empty after removing notes.md, remove that empty directory too.

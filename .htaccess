@@ -1,0 +1,24 @@
+# FitCrew Challenge — root web security boundary
+# The repository root is the Apache document root by design.
+
+Options -Indexes
+DirectoryIndex index.php
+
+<IfModule mod_authz_core.c>
+    # Protect all dotfiles and dot-directories, including .env and .git.
+    <FilesMatch "^\.">
+        Require all denied
+    </FilesMatch>
+
+    # Protect repository/configuration metadata that lives at the root.
+    <FilesMatch "^(?:composer\.(?:json|lock)|README\.md)$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Application internals are never directly web-addressable.
+    RewriteRule ^(?:inc|views|database|storage|docs|tests|vendor)(?:/|$) - [F,L,NC]
+</IfModule>

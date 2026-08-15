@@ -1,0 +1,66 @@
+FitCrew Challenge — Phase 1B Branding + Root Web-Root Amendment
+
+THIS PACKAGE SUPERSEDES the earlier Phase 1B branding patch.
+It was built from the current uploaded FitCrew repository snapshot.
+
+Target repo:
+C:\laragon\www\fitcrew
+
+Target branch:
+develop
+
+IMPORTANT:
+- Do not copy a .env from this package. None is included.
+- The project root becomes the Apache/Laragon document root.
+- The old public/ directory is removed.
+- Root .htaccess is now part of the security boundary.
+
+APPLY
+1. Confirm branch/status:
+   git branch --show-current
+   git status --short --branch
+
+2. Back up or commit any local work first.
+
+3. Copy the contents of this patch into C:\laragon\www\fitcrew, preserving paths and allowing overwrite.
+
+4. Remove the obsolete public directory:
+   Remove-Item ".\public" -Recurse -Force
+
+5. Remove the obsolete old design-notes location if present:
+   Remove-Item ".\assets\design" -Recurse -Force
+
+6. Ensure Laragon's document root is C:\laragon\www\fitcrew (NOT ...\fitcrew\public).
+
+7. Restart Apache/Laragon so .htaccess rules are active.
+
+8. Run PHP lint and browser/security smoke tests before commit.
+
+EXPECTED SECURITY SMOKE
+Public:
+/                         200
+/login.php                200
+/assets/css/app.css       200
+/app.php                  302 to login while signed out
+/health/google/connect.php 501 intentional
+/api/index.php            501 intentional
+
+Protected (403 or 404):
+/.env
+/.git/
+/inc/bootstrap.php
+/views/
+/database/
+/storage/
+/docs/
+/tests/
+/vendor/
+/composer.json
+/composer.lock
+/README.md
+
+9. Review changes:
+   git status --short
+   git diff --stat
+
+10. Commit only after local browser/security smoke passes.
