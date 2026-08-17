@@ -1,18 +1,34 @@
 # Database Schema Plan
 
-Final SQL is not authorized in Phase 1 skeleton.
+## Phase 2A1 — Migration foundation
 
-## Foundation table candidates for later approval
+Phase 2A1 authorizes migration infrastructure only.
+
+The only database table introduced in this phase is:
+
+- `schema_migrations` — immutable migration ledger/source of truth.
+
+The canonical migration entry point is CLI-only:
+
+```text
+php database/migrate.php
+```
+
+See `docs/phase2a1_migration_foundation.md` for the migration contract, safety rules, and proof procedure.
+
+## Future product tables
+
+Product tables remain separately governed and are **not** created by Phase 2A1.
+
+Examples of later candidates include:
 
 - users
 - user_auth_identities
+- user_contact_emails
 - user_sessions
 - groups
 - group_members
-- audit_events
-
-## Product table candidates for later approval
-
+- group_invitations
 - challenges
 - challenge_participants
 - health_provider_connections
@@ -25,8 +41,4 @@ Final SQL is not authorized in Phase 1 skeleton.
 - fine_assessments
 - badge_awards
 
-## Migration recommendation
-
-Start with numbered SQL files once Governance authorizes schema implementation.
-
-No executable SQL is included in Phase 1 skeleton.
+The Google Sheets prototype remains product evidence, not database architecture.
