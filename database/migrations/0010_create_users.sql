@@ -1,0 +1,20 @@
+CREATE TABLE users (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    public_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    display_name VARCHAR(120) NULL,
+    account_status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    platform_role_code VARCHAR(32) NOT NULL DEFAULT 'USER',
+    timezone VARCHAR(64) NULL,
+    locale VARCHAR(32) NULL,
+    onboarding_completed_at DATETIME(6) NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    suspended_at DATETIME(6) NULL,
+    deactivated_at DATETIME(6) NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_users_public_id (public_id),
+    KEY idx_users_account_status (account_status),
+    KEY idx_users_platform_role (platform_role_code),
+    CONSTRAINT chk_users_account_status CHECK (account_status IN ('ACTIVE', 'SUSPENDED', 'DEACTIVATED')),
+    CONSTRAINT chk_users_platform_role CHECK (platform_role_code IN ('USER', 'PLATFORM_ADMIN'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -16,6 +16,11 @@ function fc_db(): PDO
     $charset = (string) fc_env('DB_CHARSET', 'utf8mb4');
     $username = (string) fc_env('DB_USERNAME', 'root');
     $password = (string) fc_env('DB_PASSWORD', '');
+    $dbTimezone = (string) fc_env('DB_TIMEZONE', '+00:00');
+
+    if (!preg_match('/^[+-](?:0\d|1[0-4]):[0-5]\d$/', $dbTimezone)) {
+        throw new RuntimeException(sprintf('Invalid DB_TIMEZONE offset: %s', $dbTimezone));
+    }
 
     $dsn = sprintf('mysql:host=%s;port=%s;dbname=%s;charset=%s', $host, $port, $database, $charset);
 
@@ -24,6 +29,10 @@ function fc_db(): PDO
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES => false,
     ]);
+
+    // Normalize each DB session to UTC so DATETIME/CURRENT_TIMESTAMP contracts are consistent
+    // across Laragon and future hosting environments.
+    $pdo->exec('SET time_zone = ' . $pdo->quote($dbTimezone));
 
     return $pdo;
 }

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 function fc_log(string $level, string $message, array $context = []): void
 {
+    $context = fc_redact_sensitive_context($context);
+
     $line = sprintf(
         "[%s] %s: %s %s%s",
         date('c'),

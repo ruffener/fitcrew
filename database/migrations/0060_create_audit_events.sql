@@ -1,0 +1,20 @@
+CREATE TABLE audit_events (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    occurred_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    actor_user_id BIGINT UNSIGNED NULL,
+    event_type VARCHAR(96) NOT NULL,
+    target_type VARCHAR(64) NULL,
+    target_id VARCHAR(64) NULL,
+    outcome VARCHAR(20) NOT NULL,
+    request_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NULL,
+    metadata_json JSON NULL,
+    group_id BIGINT UNSIGNED NULL,
+    client_evidence_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
+    PRIMARY KEY (id),
+    KEY idx_audit_events_actor_time (actor_user_id, occurred_at),
+    KEY idx_audit_events_type_time (event_type, occurred_at),
+    KEY idx_audit_events_target (target_type, target_id),
+    KEY idx_audit_events_group_time (group_id, occurred_at),
+    CONSTRAINT fk_audit_actor_user FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE RESTRICT,
+    CONSTRAINT chk_audit_outcome CHECK (outcome IN ('SUCCESS', 'FAILURE', 'DENIED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

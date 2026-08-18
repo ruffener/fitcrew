@@ -1,0 +1,21 @@
+CREATE TABLE user_sessions (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL,
+    auth_identity_id BIGINT UNSIGNED NOT NULL,
+    session_id_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    last_seen_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    idle_expires_at DATETIME(6) NOT NULL,
+    absolute_expires_at DATETIME(6) NOT NULL,
+    revoked_at DATETIME(6) NULL,
+    revocation_reason VARCHAR(160) NULL,
+    user_agent_summary VARCHAR(255) NULL,
+    client_network_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_user_sessions_hash (session_id_hash),
+    KEY idx_user_sessions_user_active (user_id, revoked_at, absolute_expires_at),
+    KEY idx_user_sessions_identity (auth_identity_id),
+    CONSTRAINT fk_user_session_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_user_session_identity FOREIGN KEY (auth_identity_id) REFERENCES user_auth_identities(id) ON DELETE RESTRICT,
+    CONSTRAINT chk_user_session_expiry CHECK (absolute_expires_at >= idle_expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

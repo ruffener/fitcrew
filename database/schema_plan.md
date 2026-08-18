@@ -2,43 +2,45 @@
 
 ## Phase 2A1 — Migration foundation
 
-Phase 2A1 authorizes migration infrastructure only.
-
-The only database table introduced in this phase is:
+Accepted infrastructure:
 
 - `schema_migrations` — immutable migration ledger/source of truth.
+- CLI-only migration entry point: `php database/migrate.php`.
+- SHA-256 applied-history integrity enforcement.
 
-The canonical migration entry point is CLI-only:
+## Phase 2A2 — Account / Identity foundation
+
+Authorized product tables:
+
+- `users` — durable platform account with numeric internal ID + opaque ULID public ID.
+- `user_auth_identities` — Google, Apple, and Microsoft identity records; no local-password identity.
+- `user_contact_emails` — non-globally-unique communication/invitation email addresses.
+- `user_sessions` — hashed server-side session identity and revocation records.
+- `auth_transactions` — short-lived provider/intent-bound authentication transaction evidence.
+- `audit_events` — append-oriented security/account audit foundation.
+
+Phase 2A2 migration files:
 
 ```text
-php database/migrate.php
+0010_create_users.sql
+0020_create_user_auth_identities.sql
+0030_create_user_contact_emails.sql
+0040_create_user_sessions.sql
+0050_create_auth_transactions.sql
+0060_create_audit_events.sql
 ```
 
-See `docs/phase2a1_migration_foundation.md` for the migration contract, safety rules, and proof procedure.
+## Still not authorized
 
-## Future product tables
+Examples include:
 
-Product tables remain separately governed and are **not** created by Phase 2A1.
-
-Examples of later candidates include:
-
-- users
-- user_auth_identities
-- user_contact_emails
-- user_sessions
-- groups
-- group_members
-- group_invitations
-- challenges
-- challenge_participants
+- groups / memberships / invitations
+- challenges / participants
 - health_provider_connections
-- health_import_batches
-- raw_health_imports
+- health imports / raw_health_imports
 - official_daily_logs
-- official_daily_log_sources
-- baseline_snapshots
-- leaderboard_snapshots
-- fine_assessments
-- badge_awards
+- scoring / leaderboard
+- fines / badges
+- billing
 
 The Google Sheets prototype remains product evidence, not database architecture.
