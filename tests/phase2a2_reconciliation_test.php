@@ -27,6 +27,17 @@ function fc_recon_expect_pdo_failure(callable $callback, string $message): void
     throw new RuntimeException($message);
 }
 
+function fc_recon_expect_runtime_failure(callable $callback, string $message): void
+{
+    try {
+        $callback();
+    } catch (RuntimeException $error) {
+        return;
+    }
+
+    throw new RuntimeException($message);
+}
+
 $testSecretKey = base64_encode(str_repeat("\x37", SODIUM_CRYPTO_SECRETBOX_KEYBYTES));
 $_ENV['AUTH_TRANSACTION_SECRET_KEY_B64'] = $testSecretKey;
 putenv('AUTH_TRANSACTION_SECRET_KEY_B64=' . $testSecretKey);
@@ -128,6 +139,95 @@ try {
         'Wrong transaction recovered PKCE verifier.'
     );
 
+    $corruptState = 'phase2a2-recon-corrupt-state-' . bin2hex(random_bytes(12));
+    $corruptBinding = 'phase2a2-recon-corrupt-binding-' . bin2hex(random_bytes(12));
+    $corruptVerifier = 'phase2a2-recon-corrupt-verifier-' . bin2hex(random_bytes(24));
+    $corruptTransaction = fc_auth_transaction_create(
+        $pdo,
+        'LOGIN',
+        'GOOGLE',
+        null,
+        $corruptState,
+        $corruptBinding,
+        'ACCOUNT_ENTRY',
+        null,
+        $corruptVerifier,
+        300
+    );
+    $corruptEnvelope = $pdo->prepare(
+        "UPDATE auth_transactions SET pkce_verifier_secret_envelope = 'v1.corrupted-envelope' WHERE id = :id"
+    );
+    $corruptEnvelope->execute([':id' => $corruptTransaction['id']]);
+    fc_recon_expect_runtime_failure(
+        fn () => fc_auth_transaction_recover_pkce_verifier(
+            $pdo,
+            $corruptTransaction['public_id'],
+            'LOGIN',
+            'GOOGLE',
+            $corruptState,
+            $corruptBinding,
+            null
+        ),
+        'Corrupted protected PKCE envelope was not rejected.'
+    );
+
+    $wrongHashState = 'phase2a2-recon-wrong-hash-state-' . bin2hex(random_bytes(12));
+    $wrongHashBinding = 'phase2a2-recon-wrong-hash-binding-' . bin2hex(random_bytes(12));
+    $wrongHashVerifier = 'phase2a2-recon-wrong-hash-verifier-' . bin2hex(random_bytes(24));
+    $wrongHashTransaction = fc_auth_transaction_create(
+        $pdo,
+        'LOGIN',
+        'GOOGLE',
+        null,
+        $wrongHashState,
+        $wrongHashBinding,
+        'ACCOUNT_ENTRY',
+        null,
+        $wrongHashVerifier,
+        300
+    );
+    $wrongHashUpdate = $pdo->prepare(
+        'UPDATE auth_transactions SET pkce_verifier_hash = :wrong_hash WHERE id = :id'
+    );
+    $wrongHashUpdate->execute([
+        ':wrong_hash' => str_repeat('0', 64),
+        ':id' => $wrongHashTransaction['id'],
+    ]);
+    fc_recon_expect_runtime_failure(
+        fn () => fc_auth_transaction_recover_pkce_verifier(
+            $pdo,
+            $wrongHashTransaction['public_id'],
+            'LOGIN',
+            'GOOGLE',
+            $wrongHashState,
+            $wrongHashBinding,
+            null
+        ),
+        'Valid PKCE envelope paired with the wrong stored verifier hash was not rejected.'
+    );
+
+    $audit = fc_audit_event_write($pdo, [
+        'actor_user_id' => $userA['id'],
+        'event_type' => 'PHASE2A2_PKCE_INTEGRITY_PROOF',
+        'target_type' => 'AUTH_TRANSACTION',
+        'target_id' => $transaction['public_id'],
+        'outcome' => 'SUCCESS',
+        'request_id' => fc_new_public_id(),
+        'metadata' => [
+            'safe_marker' => 'pkce-integrity-proof',
+            'pkce_verifier' => $verifier,
+            'pkce_verifier_secret_envelope' => (string) $storedRow['pkce_verifier_secret_envelope'],
+            'auth_transaction_secret_key_b64' => $testSecretKey,
+        ],
+    ]);
+    $auditQuery = $pdo->prepare('SELECT metadata_json FROM audit_events WHERE id = :id');
+    $auditQuery->execute([':id' => $audit['id']]);
+    $auditJson = (string) $auditQuery->fetchColumn();
+    fc_recon_assert(str_contains($auditJson, 'pkce-integrity-proof'), 'Safe audit proof marker was not retained.');
+    fc_recon_assert(!str_contains($auditJson, $verifier), 'Raw PKCE verifier appeared in audit output.');
+    fc_recon_assert(!str_contains($auditJson, (string) $storedRow['pkce_verifier_secret_envelope']), 'Protected PKCE envelope appeared in audit output.');
+    fc_recon_assert(!str_contains($auditJson, $testSecretKey), 'Auth-transaction secret key appeared in audit output.');
+
     fc_recon_assert(
         fc_auth_transaction_consume($pdo, $transaction['public_id'], 'LOGIN', 'GOOGLE', $state, $binding, null),
         'Valid transaction could not be consumed.'
@@ -184,7 +284,11 @@ try {
     echo "Phase 2A2 targeted reconciliation proof: PASS\n";
     echo "- provider email verification TRUE/FALSE/UNKNOWN: PASS\n";
     echo "- session user/auth-identity database integrity: PASS\n";
-    echo "- recoverable protected PKCE verifier lifecycle: PASS\n";
+    echo "- normal protected PKCE verifier recovery: PASS\n";
+    echo "- corrupted protected PKCE envelope rejection: PASS\n";
+    echo "- wrong stored PKCE verifier hash rejection: PASS\n";
+    echo "- consumed / expired PKCE verifier unavailable: PASS\n";
+    echo "- raw PKCE verifier / envelope / secret key absent from audit output: PASS\n";
     echo "- account-entry order Google → Apple → Microsoft: PASS\n";
     exit(0);
 } catch (Throwable $error) {

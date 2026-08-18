@@ -1,64 +1,80 @@
 # Governance Decisions
 
-## Approved Phase 0 / Phase 1 Direction
+This file is a concise current-state summary. Historical decisions that have been replaced are retained as `SUPERSEDED` where they remain useful context.
 
-| Decision | Status |
+## Product / Platform Foundation
+
+| Decision | Current Governance Status |
 |---|---|
-| Product name: FitCrew Challenge | Approved |
-| Domain: fitcrewchallenge.com | Approved |
-| Project/repo short name: fitcrew | Approved |
-| Local-first PHP/MariaDB | Approved |
-| Laragon + VS Code + Git workflow | Approved |
-| Multiple private groups from day one | Approved |
-| Email/password login for MVP | Approved |
-| Google Health connection separate from account login | Approved |
-| Google login | Pending future authorization |
-| Apple login | Pending future authorization |
-| MVP provider: Google Health | Approved |
-| Provider-aware architecture | Required |
-| official_daily_logs source of truth | Approved |
-| raw_health_imports evidence only | Approved |
-| MVP privacy modes: OPEN_FAMILY and PRIVATE_METRICS | Approved |
+| Product name: FitCrew Challenge | APPROVED |
+| Domain: fitcrewchallenge.com | APPROVED |
+| Project/repo short name: fitcrew | APPROVED |
+| Local-first PHP/MariaDB; Laragon + VS Code + Git | APPROVED |
+| Multiple private groups from day one | APPROVED |
+| Root-web architecture with protected internal paths | ACCEPTED / PROVEN |
+| Phase 2A1 migration foundation | ACCEPTED / COMPLETE |
+| Product schema evolution | Authorized incrementally by Governance slice |
 
-## Still Pending Before Product Build
+## Authentication / Identity
 
-- Final Fine Fund rules and amounts.
-- Final Weekly Badge names and tone.
-- Final SQL authorization.
-- Later provider/health implementation decisions at their authorized phase.
+| Decision | Current Governance Status |
+|---|---|
+| MVP authentication providers | GOOGLE / APPLE / MICROSOFT |
+| Authentication model | FEDERATED / PASSWORDLESS FIRST |
+| FitCrew-managed passwords | NOT APPROVED — prior email/password MVP direction SUPERSEDED |
+| Email magic-link login | NOT INITIAL MVP |
+| Google Authentication implementation | Phase 2A3 — NOT YET AUTHORIZED pending Phase 2A2 acceptance |
+| Microsoft Authentication implementation | Phase 2A4 — NOT YET AUTHORIZED |
+| Apple Authentication implementation | Phase 2A5 — NOT YET AUTHORIZED |
+| Authentication identity | Separate from health authorization |
+| Matching email | Never automatic account-linking or merge truth |
 
-## Phase 1B Branding Integration
+## Health Data
 
-Authorized direction:
+| Decision | Current Governance Status |
+|---|---|
+| Google Health API | MVP provider candidate |
+| Health Data Architecture v1.0 | ACCEPTED |
+| Google Health production readiness | NOT YET PROVEN |
+| Health Data Phase 2 | Capability & Provenance Proof AUTHORIZED |
+| Raw health imports | Evidence only |
+| `official_daily_logs` | Challenge truth |
 
-- FitCrew Branding v1.0 applied to the reusable website shell.
-- Prior green development identity retired.
-- Runtime/browser asset source of truth: `assets/`.
-- Design evidence moved to `docs/design/` and is not part of the public asset tree.
-- Primary tagline: `Your Crew. Your Challenge. Your Progress.`
-- Secondary statement: `Stronger Together. Driven to Improve.`
-- Royal Blue + Energy Orange + Deep Navy visual system established.
-- Bebas Neue + Montserrat typography direction established for the shell.
-- Board-derived raster logo assets are reference assets only; clean production SVG masters remain pending future brand-asset delivery/approval.
-- Phase 1B does not authorize Phase 2A or later product behavior.
-
-## Phase 1B Root Web-Root Amendment
-
-FitCrew now uses:
+Canonical product data spine:
 
 ```text
-C:\laragon\www\fitcrew
+measurement source
+→ health-data platform/provider
+→ raw_health_imports
+→ official_daily_logs
+→ scoring / dashboards / leaderboard / participant pages / fines / badges / communications
 ```
 
-as both the project root and Apache document root.
+## Privacy
 
-The earlier `public/` document-root pattern is superseded.
+Canonical privacy product names:
 
-Security boundary:
+```text
+Private Measurements
+Crew-Shared Measurements
+```
 
-- root `.htaccess` denies direct access to application internals and repository/configuration files;
-- `Options -Indexes` disables directory listings;
-- `assets/.htaccess` blocks executable/server-side files in the runtime asset tree;
-- security smoke proof must verify protected paths return 403/404 before acceptance/deployment.
+Prior Phase 0 labels `OPEN_FAMILY` / `PRIVATE_METRICS` are `SUPERSEDED` as product-facing privacy names.
 
-See `docs/root_web_security.md`.
+## Branding / Public Experience
+
+- FitCrew Branding v1.0 is established.
+- Primary tagline: `Your Crew. Your Challenge. Your Progress.`
+- Secondary statement: `Stronger Together. Driven to Improve.`
+- Royal Blue + Energy Orange + Deep Navy visual system is established.
+- Experience Phases 1–6: `ACCEPTED / COMPLETE`.
+
+## Historical Decisions Superseded by Current Governance
+
+The following were valid earlier planning decisions but are no longer canonical:
+
+- `Email/password login for MVP` — **SUPERSEDED** by federated/passwordless-first authentication.
+- `Google login pending future authorization` / `Apple login pending future authorization` — **SUPERSEDED** by the accepted Google → Microsoft → Apple provider implementation sequence, each still requiring its own authorization.
+- `MVP provider: Google Health — Approved` — **SUPERSEDED** by the more precise status: Google Health API is the MVP provider candidate; Health Data Architecture v1.0 is accepted; production readiness is not yet proven.
+- `Final SQL authorization pending` — **SUPERSEDED** by governed incremental numbered migrations authorized per implementation slice.
+- `OPEN_FAMILY` / `PRIVATE_METRICS` — **SUPERSEDED** as product-facing privacy names by `Crew-Shared Measurements` / `Private Measurements`.

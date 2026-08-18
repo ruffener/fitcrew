@@ -64,6 +64,32 @@ try {
     fc_unit_assert(!str_contains($envelope, $rawSecret), 'Protected secret envelope exposed raw PKCE material.');
     fc_unit_assert(fc_protected_secret_decrypt($envelope, $testKey) === $rawSecret, 'Protected secret did not round-trip exactly.');
 
+    $governance = (string) file_get_contents(dirname(__DIR__) . '/docs/governance_decisions.md');
+    foreach ([
+        'GOOGLE / APPLE / MICROSOFT',
+        'FEDERATED / PASSWORDLESS FIRST',
+        'SUPERSEDED',
+        'Health Data Architecture v1.0',
+        'Capability & Provenance Proof AUTHORIZED',
+        'Private Measurements',
+        'Crew-Shared Measurements',
+    ] as $requiredGovernanceText) {
+        fc_unit_assert(
+            str_contains($governance, $requiredGovernanceText),
+            'Governance decisions document is missing current canonical text: ' . $requiredGovernanceText
+        );
+    }
+
+    $envExample = (string) file_get_contents(dirname(__DIR__) . '/.env.example');
+    fc_unit_assert(
+        preg_match('/^AUTH_TRANSACTION_SECRET_KEY_B64=\s*$/m', $envExample) === 1,
+        '.env.example must expose an empty AUTH_TRANSACTION_SECRET_KEY_B64 contract.'
+    );
+    fc_unit_assert(
+        preg_match('/^AUTH_TRANSACTION_TTL_SECONDS=600\s*$/m', $envExample) === 1,
+        '.env.example must retain AUTH_TRANSACTION_TTL_SECONDS=600.'
+    );
+
     $accountEntry = (string) file_get_contents(dirname(__DIR__) . '/views/auth/login.php');
     $googlePosition = strpos($accountEntry, 'Continue with Google');
     $applePosition = strpos($accountEntry, 'Continue with Apple');
@@ -81,6 +107,8 @@ try {
     echo "- provider contract normalization: PASS\n";
     echo "- provider email TRUE/FALSE/UNKNOWN normalization: PASS\n";
     echo "- protected PKCE secret encryption/decryption: PASS\n";
+    echo "- governance decision reconciliation: PASS\n";
+    echo "- auth-transaction secret configuration contract: PASS\n";
     echo "- account-entry provider order Google → Apple → Microsoft: PASS\n";
     exit(0);
 } catch (Throwable $error) {

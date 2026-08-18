@@ -85,7 +85,7 @@ function fc_auth_transaction_recover_pkce_verifier(
     fc_auth_transaction_clear_expired_pkce_secrets($pdo);
 
     $sql =
-        'SELECT pkce_verifier_secret_envelope FROM auth_transactions ' .
+        'SELECT pkce_verifier_hash, pkce_verifier_secret_envelope FROM auth_transactions ' .
         'WHERE public_id = :public_id ' .
         '  AND intent = :intent ' .
         '  AND expected_provider = :provider ' .
@@ -111,13 +111,25 @@ function fc_auth_transaction_recover_pkce_verifier(
 
     $statement = $pdo->prepare($sql);
     $statement->execute($params);
-    $envelope = $statement->fetchColumn();
+    $row = $statement->fetch(PDO::FETCH_ASSOC);
 
-    if ($envelope === false || $envelope === null || $envelope === '') {
+    if ($row === false) {
         return null;
     }
 
-    return fc_protected_secret_decrypt((string) $envelope);
+    $storedHash = (string) ($row['pkce_verifier_hash'] ?? '');
+    $envelope = (string) ($row['pkce_verifier_secret_envelope'] ?? '');
+    if ($storedHash === '' || $envelope === '') {
+        return null;
+    }
+
+    $verifier = fc_protected_secret_decrypt($envelope);
+    $recomputedHash = fc_secret_evidence_hash($verifier);
+    if (!hash_equals($storedHash, $recomputedHash)) {
+        throw new RuntimeException('Protected PKCE verifier integrity check failed.');
+    }
+
+    return $verifier;
 }
 
 function fc_auth_transaction_consume(

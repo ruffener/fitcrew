@@ -77,6 +77,8 @@ A PKCE `code_verifier`, when a future provider flow requires one, is also stored
 - the encryption key is separate from database contents and is supplied only through `AUTH_TRANSACTION_SECRET_KEY_B64` in the environment;
 - the raw verifier is never written to general logs, audit metadata, or ordinary application output;
 - recovery requires the matching transaction public ID, intent, provider, state evidence, browser/session binding, user scope, unconsumed state, and unexpired state;
+- after decryption, FitCrew recomputes the PKCE verifier SHA-256 evidence hash and compares it to the stored `pkce_verifier_hash` with `hash_equals()` before releasing the verifier;
+- corrupted envelopes or a valid envelope paired with a mismatched stored verifier hash fail closed and never return plaintext verifier material;
 - transaction consumption clears the recoverable envelope;
 - expired envelopes are cleared during auth-transaction lifecycle access and cannot be recovered through the approved helper;
 - the hash may remain as non-recoverable evidence after the envelope is cleared.
@@ -94,6 +96,18 @@ AUTH_TRANSACTION_SECRET_KEY_B64=<base64-encoded-32-byte-key>
 ```
 
 Do not commit the real key. Production secret configuration and provider implementation remain separately governed.
+
+The committed `.env.example` exposes only the empty configuration contract. Validate the developer's real local key without disclosing it with:
+
+```text
+php tests/phase2a2_local_secret_config_test.php
+```
+
+Expected output is only:
+
+```text
+AUTH_TRANSACTION_SECRET_KEY_B64: CONFIGURED / VALID 32-BYTE KEY
+```
 
 ## Audit
 
