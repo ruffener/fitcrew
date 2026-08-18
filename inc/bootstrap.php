@@ -18,6 +18,7 @@ require_once __DIR__ . '/support/flash.php';
 require_once __DIR__ . '/support/dates.php';
 require_once __DIR__ . '/security/escape.php';
 require_once __DIR__ . '/security/redaction.php';
+require_once __DIR__ . '/security/protected_secrets.php';
 require_once __DIR__ . '/support/logger.php';
 require_once __DIR__ . '/security/validation.php';
 require_once __DIR__ . '/security/rate_limit.php';

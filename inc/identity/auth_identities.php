@@ -29,13 +29,24 @@ function fc_auth_identity_create(PDO $pdo, int $userId, array $identity): array
         throw new InvalidArgumentException('Microsoft identities require tenant ID + object ID.');
     }
 
+    $providerEmailVerified = fc_provider_email_verified_claim($identity['provider_email_verified'] ?? null);
+    $verificationObservedAt = $identity['email_verification_observed_at'] ?? null;
+    if ($verificationObservedAt instanceof DateTimeInterface) {
+        $verificationObservedAt = $verificationObservedAt->format('Y-m-d H:i:s.u');
+    } elseif ($verificationObservedAt !== null) {
+        $verificationObservedAt = trim((string) $verificationObservedAt);
+        if ($verificationObservedAt === '') {
+            $verificationObservedAt = null;
+        }
+    }
+
     $statement = $pdo->prepare(
         'INSERT INTO user_auth_identities ( ' .
         ' user_id, provider_key, issuer, provider_subject, provider_tenant_id, provider_object_id, protocol_subject, ' .
-        ' email_at_provider, email_verified_at_provider, identity_status ' .
+        ' email_at_provider, provider_email_verified, email_verification_observed_at, identity_status ' .
         ') VALUES ( ' .
         ' :user_id, :provider_key, :issuer, :provider_subject, :provider_tenant_id, :provider_object_id, :protocol_subject, ' .
-        ' :email_at_provider, :email_verified_at_provider, :identity_status ' .
+        ' :email_at_provider, :provider_email_verified, :email_verification_observed_at, :identity_status ' .
         ')'
     );
     $statement->execute([
@@ -47,11 +58,42 @@ function fc_auth_identity_create(PDO $pdo, int $userId, array $identity): array
         ':provider_object_id' => $objectId,
         ':protocol_subject' => $protocolSubject,
         ':email_at_provider' => fc_nullable_trimmed($identity['email_at_provider'] ?? null),
-        ':email_verified_at_provider' => $identity['email_verified_at_provider'] ?? null,
+        ':provider_email_verified' => $providerEmailVerified,
+        ':email_verification_observed_at' => $verificationObservedAt,
         ':identity_status' => $status,
     ]);
 
     return ['id' => (int) $pdo->lastInsertId()];
+}
+
+function fc_provider_email_verified_claim(mixed $value): ?int
+{
+    if ($value === null) {
+        return null;
+    }
+
+    if (is_bool($value)) {
+        return $value ? 1 : 0;
+    }
+
+    if ($value === 1 || $value === '1') {
+        return 1;
+    }
+
+    if ($value === 0 || $value === '0') {
+        return 0;
+    }
+
+    if (is_string($value)) {
+        return match (strtoupper(trim($value))) {
+            'TRUE' => 1,
+            'FALSE' => 0,
+            'UNKNOWN', '' => null,
+            default => throw new InvalidArgumentException('Provider email verification claim must be TRUE, FALSE, or UNKNOWN.'),
+        };
+    }
+
+    throw new InvalidArgumentException('Provider email verification claim must be TRUE, FALSE, or UNKNOWN.');
 }
 
 function fc_nullable_trimmed(mixed $value): ?string

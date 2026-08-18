@@ -43,6 +43,10 @@ if (!class_exists(Symfony\Component\Uid\Ulid::class)) {
     exit(2);
 }
 
+$phase2a2TestSecretKey = base64_encode(str_repeat("\x42", SODIUM_CRYPTO_SECRETBOX_KEYBYTES));
+$_ENV['AUTH_TRANSACTION_SECRET_KEY_B64'] = $phase2a2TestSecretKey;
+putenv('AUTH_TRANSACTION_SECRET_KEY_B64=' . $phase2a2TestSecretKey);
+
 $pdo = fc_db();
 $dbTimezone = (string) $pdo->query('SELECT @@session.time_zone')->fetchColumn();
 if ($dbTimezone !== '+00:00') {
@@ -120,7 +124,7 @@ try {
         ]);
     }, 'One Google/Apple external identity must not belong to two users.');
 
-    fc_auth_identity_create($pdo, $user2['id'], [
+    $microsoftUser2 = fc_auth_identity_create($pdo, $user2['id'], [
         'provider_key' => 'MICROSOFT',
         'issuer' => 'https://login.microsoftonline.com/test/v2.0',
         'provider_tenant_id' => 'tenant-phase2a2',
@@ -136,6 +140,37 @@ try {
             'provider_object_id' => 'object-phase2a2',
         ]);
     }, 'Microsoft tenant + object identity must be globally unique.');
+
+    $triTrue = fc_auth_identity_create($pdo, $user1['id'], [
+        'provider_key' => 'GOOGLE',
+        'issuer' => 'https://accounts.google.com',
+        'provider_subject' => 'phase2a2-email-verified-true',
+        'email_at_provider' => 'tri-state@example.test',
+        'provider_email_verified' => true,
+        'email_verification_observed_at' => new DateTimeImmutable('now', new DateTimeZone('UTC')),
+    ]);
+    $triFalse = fc_auth_identity_create($pdo, $user1['id'], [
+        'provider_key' => 'APPLE',
+        'issuer' => 'https://appleid.apple.com',
+        'provider_subject' => 'phase2a2-email-verified-false',
+        'email_at_provider' => 'tri-state@example.test',
+        'provider_email_verified' => false,
+        'email_verification_observed_at' => new DateTimeImmutable('now', new DateTimeZone('UTC')),
+    ]);
+    $triUnknown = fc_auth_identity_create($pdo, $user2['id'], [
+        'provider_key' => 'GOOGLE',
+        'issuer' => 'https://accounts.google.com',
+        'provider_subject' => 'phase2a2-email-verified-unknown',
+        'email_at_provider' => 'tri-state@example.test',
+        'provider_email_verified' => null,
+    ]);
+    $triStatement = $pdo->prepare('SELECT provider_email_verified FROM user_auth_identities WHERE id = :id');
+    $triStatement->execute([':id' => $triTrue['id']]);
+    fc_test_assert((int) $triStatement->fetchColumn() === 1, 'Provider email verification TRUE must be preserved.');
+    $triStatement->execute([':id' => $triFalse['id']]);
+    fc_test_assert((int) $triStatement->fetchColumn() === 0, 'Provider email verification FALSE must be preserved.');
+    $triStatement->execute([':id' => $triUnknown['id']]);
+    fc_test_assert($triStatement->fetchColumn() === null, 'Provider email verification UNKNOWN must remain NULL.');
 
     $canonical = fc_contact_email_canonicalize('  Foo.Bar+tag@Example.COM  ');
     fc_test_assert($canonical === 'foo.bar+tag@example.com', 'Contact email canonicalization must trim/lowercase without dot/plus rewriting.');
@@ -164,6 +199,32 @@ try {
     }, 'A user must not have two active primary contact emails.');
 
     $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+
+    fc_test_expect_failure(function () use ($pdo, $user1, $microsoftUser2, $now): void {
+        fc_session_record_create(
+            $pdo,
+            $user1['id'],
+            $microsoftUser2['id'],
+            'phase2a2-helper-mismatch-' . bin2hex(random_bytes(16)),
+            $now->modify('+20 minutes'),
+            $now->modify('+8 hours')
+        );
+    }, 'Session helper must reject an authentication identity owned by another user.');
+
+    fc_test_expect_pdo_failure(function () use ($pdo, $user1, $microsoftUser2, $now): void {
+        $statement = $pdo->prepare(
+            'INSERT INTO user_sessions (user_id, auth_identity_id, session_id_hash, idle_expires_at, absolute_expires_at) ' .
+            'VALUES (:user_id, :identity_id, :session_hash, :idle_expires_at, :absolute_expires_at)'
+        );
+        $statement->execute([
+            ':user_id' => $user1['id'],
+            ':identity_id' => $microsoftUser2['id'],
+            ':session_hash' => fc_session_id_hash('phase2a2-db-mismatch-' . bin2hex(random_bytes(16))),
+            ':idle_expires_at' => $now->modify('+20 minutes')->format('Y-m-d H:i:s.u'),
+            ':absolute_expires_at' => $now->modify('+8 hours')->format('Y-m-d H:i:s.u'),
+        ]);
+    }, 'Database must reject cross-user session/auth-identity mismatch.');
+
     $sessionRaw = 'phase2a2-raw-session-' . bin2hex(random_bytes(16));
     $session = fc_session_record_create(
         $pdo,
@@ -213,7 +274,7 @@ try {
     fc_test_assert(fc_public_id_is_valid($transaction['public_id']), 'Auth transaction public ID must be a valid ULID.');
 
     $txQuery = $pdo->prepare(
-        'SELECT state_hash, nonce_hash, pkce_verifier_hash, browser_session_binding_hash, post_auth_destination_key FROM auth_transactions WHERE id = :id'
+        'SELECT state_hash, nonce_hash, pkce_verifier_hash, pkce_verifier_secret_envelope, browser_session_binding_hash, post_auth_destination_key FROM auth_transactions WHERE id = :id'
     );
     $txQuery->execute([':id' => $transaction['id']]);
     $txRow = $txQuery->fetch();
@@ -222,6 +283,16 @@ try {
         fc_test_assert(!in_array($rawSecret, $txRow, true), 'Raw auth transaction secrets must not be stored.');
     }
     fc_test_assert($txRow['post_auth_destination_key'] === 'APP_HOME', 'Auth transaction must store an approved destination key, not a URL.');
+    fc_test_assert(!empty($txRow['pkce_verifier_secret_envelope']), 'Recoverable PKCE verifier must have a protected server-side representation.');
+    fc_test_assert(!str_contains((string) $txRow['pkce_verifier_secret_envelope'], $pkce), 'Protected PKCE envelope must not expose the raw verifier.');
+    fc_test_assert(
+        fc_auth_transaction_recover_pkce_verifier($pdo, $transaction['public_id'], 'LOGIN', 'GOOGLE', $state, $binding, null) === $pkce,
+        'Valid unexpired transaction must recover the exact PKCE verifier.'
+    );
+    fc_test_assert(
+        fc_auth_transaction_recover_pkce_verifier($pdo, $transaction['public_id'], 'LOGIN', 'GOOGLE', $state, 'wrong-binding', null) === null,
+        'Wrong browser/session binding must not recover PKCE verifier.'
+    );
     fc_test_assert(
         !fc_auth_transaction_consume($pdo, $transaction['public_id'], 'LOGIN', 'APPLE', $state, $binding, null),
         'Wrong provider must not consume transaction.'
@@ -234,6 +305,13 @@ try {
         !fc_auth_transaction_consume($pdo, $transaction['public_id'], 'LOGIN', 'GOOGLE', $state, $binding, null),
         'Consumed transaction must be single-use.'
     );
+    fc_test_assert(
+        fc_auth_transaction_recover_pkce_verifier($pdo, $transaction['public_id'], 'LOGIN', 'GOOGLE', $state, $binding, null) === null,
+        'Consumed transaction must not recover PKCE verifier.'
+    );
+    $consumedSecretQuery = $pdo->prepare('SELECT pkce_verifier_secret_envelope FROM auth_transactions WHERE id = :id');
+    $consumedSecretQuery->execute([':id' => $transaction['id']]);
+    fc_test_assert($consumedSecretQuery->fetchColumn() === null, 'Consumption must remove the recoverable PKCE secret envelope.');
 
     $expired = fc_auth_transaction_create(
         $pdo,
@@ -244,7 +322,7 @@ try {
         'expired-binding',
         'ACCOUNT_ENTRY',
         null,
-        null,
+        'phase2a2-expired-pkce-verifier',
         300
     );
     $expire = $pdo->prepare(
@@ -255,6 +333,13 @@ try {
         !fc_auth_transaction_consume($pdo, $expired['public_id'], 'LOGIN', 'GOOGLE', 'expired-state', 'expired-binding', null),
         'Expired transaction must not be consumed.'
     );
+    fc_test_assert(
+        fc_auth_transaction_recover_pkce_verifier($pdo, $expired['public_id'], 'LOGIN', 'GOOGLE', 'expired-state', 'expired-binding', null) === null,
+        'Expired transaction must not recover PKCE verifier.'
+    );
+    $expiredSecretQuery = $pdo->prepare('SELECT pkce_verifier_secret_envelope FROM auth_transactions WHERE id = :id');
+    $expiredSecretQuery->execute([':id' => $expired['id']]);
+    fc_test_assert($expiredSecretQuery->fetchColumn() === null, 'Expired transaction must clear recoverable PKCE envelope during lifecycle cleanup.');
 
     fc_test_expect_failure(
         fn () => fc_auth_destination_path('https://evil.example/redirect'),
@@ -273,6 +358,8 @@ try {
         'metadata' => [
             'proof' => 'safe-value',
             'access_token' => $secretToken,
+            'pkce_verifier' => $pkce,
+            'pkce_verifier_secret_envelope' => (string) ($txRow['pkce_verifier_secret_envelope'] ?? ''),
             'nested' => ['raw_session_id' => $rawAuditSession, 'safe_nested' => true],
         ],
         'raw_client_evidence' => '127.0.0.1',
@@ -285,6 +372,8 @@ try {
     fc_test_assert(!str_contains($auditJson, $rawAuditSession), 'Raw session ID must not be stored in audit metadata.');
     fc_test_assert(!str_contains($auditJson, 'access_token'), 'Sensitive audit keys should be removed.');
     fc_test_assert(!str_contains($auditJson, 'raw_session_id'), 'Nested sensitive audit keys should be removed.');
+    fc_test_assert(!str_contains($auditJson, $pkce), 'Raw PKCE verifier must not be stored in audit metadata.');
+    fc_test_assert(!str_contains($auditJson, 'pkce_verifier_secret_envelope'), 'Protected PKCE envelope must not be copied into audit metadata.');
 
     $pdo->rollBack();
 
@@ -292,9 +381,12 @@ try {
     echo "- DB session timezone normalized to UTC: PASS\n";
     echo "- users / ULID / account constraints: PASS\n";
     echo "- provider identity uniqueness / email non-identity: PASS\n";
+    echo "- provider email verification TRUE/FALSE/UNKNOWN: PASS\n";
     echo "- contact email canonicalization / shared-address / primary rules: PASS\n";
     echo "- hashed sessions / individual + all-session revocation: PASS\n";
+    echo "- session user/auth-identity ownership integrity: PASS\n";
     echo "- auth transaction binding / expiry / single-use / destination allowlist: PASS\n";
+    echo "- recoverable protected PKCE verifier lifecycle: PASS\n";
     echo "- audit secret redaction: PASS\n";
     echo "- unauthorized product-table boundary: PASS\n";
     exit(0);

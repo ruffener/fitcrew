@@ -7,7 +7,7 @@ $isCreateIntent = ($entryIntent ?? 'signin') === 'create';
     <h1><?= $isCreateIntent ? 'Create your FitCrew Challenge account.' : 'Continue to FitCrew Challenge.' ?></h1>
     <p class="auth-intro">
         FitCrew Challenge uses provider-based sign-in—no FitCrew password required.
-        Google, Microsoft, and Apple authentication are being enabled in separately proven phases.
+        Google, Apple, and Microsoft authentication are being enabled in separately proven phases.
     </p>
 
     <div class="provider-choice-list" aria-label="Authentication providers">
@@ -20,17 +20,17 @@ $isCreateIntent = ($entryIntent ?? 'signin') === 'create';
             <span class="provider-status">Coming next</span>
         </button>
         <button class="provider-choice" type="button" disabled>
-            <span class="provider-mark" aria-hidden="true">M</span>
+            <span class="provider-mark" aria-hidden="true">A</span>
             <span class="provider-choice-copy">
-                <strong>Continue with Microsoft</strong>
+                <strong>Continue with Apple</strong>
                 <small>Separate provider slice</small>
             </span>
             <span class="provider-status">Planned</span>
         </button>
         <button class="provider-choice" type="button" disabled>
-            <span class="provider-mark" aria-hidden="true">A</span>
+            <span class="provider-mark" aria-hidden="true">M</span>
             <span class="provider-choice-copy">
-                <strong>Continue with Apple</strong>
+                <strong>Continue with Microsoft</strong>
                 <small>Separate provider slice</small>
             </span>
             <span class="provider-status">Planned</span>

@@ -7,6 +7,21 @@ function fc_session_id_hash(string $rawSessionId): string
     return fc_secret_evidence_hash($rawSessionId);
 }
 
+function fc_assert_auth_identity_owned_by_user(PDO $pdo, int $userId, int $authIdentityId): void
+{
+    $statement = $pdo->prepare(
+        'SELECT 1 FROM user_auth_identities WHERE id = :identity_id AND user_id = :user_id LIMIT 1'
+    );
+    $statement->execute([
+        ':identity_id' => $authIdentityId,
+        ':user_id' => $userId,
+    ]);
+
+    if ($statement->fetchColumn() === false) {
+        throw new DomainException('Authentication identity does not belong to the requested FitCrew user.');
+    }
+}
+
 /** @return array{id:int,session_id_hash:string} */
 function fc_session_record_create(
     PDO $pdo,
@@ -21,6 +36,8 @@ function fc_session_record_create(
     if ($absoluteExpiresAt < $idleExpiresAt) {
         throw new InvalidArgumentException('Absolute session expiry cannot be earlier than idle expiry.');
     }
+
+    fc_assert_auth_identity_owned_by_user($pdo, $userId, $authIdentityId);
 
     $hash = fc_session_id_hash($rawSessionId);
     $statement = $pdo->prepare(

@@ -8,7 +8,7 @@ Phase 2A2 establishes provider-neutral account and authentication state contract
 - `user_auth_identities` — external identities that can prove who the account holder is.
 - `user_contact_emails` — communication and invitation addresses; not login identity truth.
 - `user_sessions` — server-side session records containing only hashed session identifiers.
-- `auth_transactions` — short-lived, single-use, provider/intent-bound authentication transaction evidence.
+- `auth_transactions` — short-lived, single-use, provider/intent-bound authentication transaction evidence and protected temporary provider-flow secrets.
 - `audit_events` — append-oriented identity/security audit records with sensitive metadata redaction.
 - `health_provider_connections` remains a separate future contract and is not created in Phase 2A2.
 
@@ -27,6 +27,18 @@ Approved provider keys are `GOOGLE`, `APPLE`, and `MICROSOFT`.
 - A user may link multiple provider identities.
 
 No provider OAuth/OIDC request or callback behavior exists in Phase 2A2.
+
+### Provider email verification claim
+
+The provider observation is preserved as a true tri-state:
+
+- `provider_email_verified = 1` — provider explicitly reported TRUE.
+- `provider_email_verified = 0` — provider explicitly reported FALSE.
+- `provider_email_verified = NULL` — provider supplied no verification claim / UNKNOWN.
+
+`email_verification_observed_at` may record when that provider claim was observed. It does not replace the tri-state claim itself.
+
+A provider email value or its verification state never causes automatic account linking or merging.
 
 ## Contact email
 
@@ -48,19 +60,44 @@ The shared PDO connection normalizes the MariaDB session to `DB_TIMEZONE` (defau
 
 The durable `user_sessions` table stores SHA-256 evidence of session IDs, never the raw session ID. It records the user and authentication identity that established the session and supports both individual and all-user revocation.
 
+The database now enforces that `user_sessions.user_id` and `user_sessions.auth_identity_id` reference the **same** canonical user through a composite `(auth_identity_id, user_id)` foreign-key contract. The session helper validates the same invariant before insert so an invalid relationship fails at both application and database layers.
+
 Phase 2A2 does not freeze ordinary-user idle or absolute timeout values. Session record creation accepts explicit expiry times so later Login/Session Governance can set those policies.
 
-## Auth transactions
+## Auth transactions and protected PKCE verifier storage
 
 `auth_transactions` supports future `LOGIN`, `LINK_IDENTITY`, and `REAUTHENTICATE` flows.
 
 It stores hashed evidence for state, nonce, PKCE verifier, and browser/session binding. It stores only an approved destination key, never an arbitrary redirect URL. Consumption is atomic and requires matching provider, intent, state evidence, browser binding, user scope, unconsumed state, and unexpired state.
 
-Provider implementations will separately determine where any temporarily required raw provider secret material lives. Phase 2A2 does not store raw provider security material in this table.
+A PKCE `code_verifier`, when a future provider flow requires one, is also stored as a short-lived **recoverable protected secret**:
+
+- the verifier is encrypted with PHP Sodium `secretbox` authenticated symmetric encryption;
+- the database stores only a versioned ciphertext envelope plus the existing SHA-256 evidence hash;
+- the encryption key is separate from database contents and is supplied only through `AUTH_TRANSACTION_SECRET_KEY_B64` in the environment;
+- the raw verifier is never written to general logs, audit metadata, or ordinary application output;
+- recovery requires the matching transaction public ID, intent, provider, state evidence, browser/session binding, user scope, unconsumed state, and unexpired state;
+- transaction consumption clears the recoverable envelope;
+- expired envelopes are cleared during auth-transaction lifecycle access and cannot be recovered through the approved helper;
+- the hash may remain as non-recoverable evidence after the envelope is cleared.
+
+Generate a per-environment local key with PHP Sodium, for example:
+
+```text
+php -r "echo base64_encode(sodium_crypto_secretbox_keygen()), PHP_EOL;"
+```
+
+Store that value only in the environment as:
+
+```text
+AUTH_TRANSACTION_SECRET_KEY_B64=<base64-encoded-32-byte-key>
+```
+
+Do not commit the real key. Production secret configuration and provider implementation remain separately governed.
 
 ## Audit
 
-`audit_events` provides the common identity/security audit foundation. General logging and audit metadata use the same sensitive-key redaction contract. Passwords, raw session IDs, authorization codes, state/nonce secrets, PKCE verifiers, provider tokens, health tokens, and raw health payloads are excluded from stored metadata.
+`audit_events` provides the common identity/security audit foundation. General logging and audit metadata use the same sensitive-key redaction contract. Passwords, raw session IDs, authorization codes, state/nonce secrets, PKCE verifiers, protected PKCE envelopes, provider tokens, health tokens, and raw health payloads are excluded from stored metadata.
 
 `group_id` is reserved as a nullable future scope value; no group foreign key exists because groups are not authorized in Phase 2A2.
 
@@ -73,8 +110,21 @@ FitCrew Challenge has no active password flow.
 - `/register.php` redirects to unified provider-based account entry.
 - `/forgot-password.php` and `/reset-password.php` redirect to unified account entry with truthful no-password messaging.
 - Legacy password-form views are removed.
-- The unified account-entry view displays Google, Microsoft, and Apple controls as disabled/coming-next placeholders until each provider slice is separately implemented and accepted.
+- The unified account-entry view displays **Google, Apple, Microsoft** controls in that canonical UI order as disabled placeholders until each provider slice is separately implemented and accepted.
+
+Provider engineering order remains separately governed and does not change the UI ordering contract.
+
+## Phase 2A2 reconciliation migrations
+
+Applied migrations `0010` through `0060` remain immutable. The targeted Governance reconciliation is expressed only through forward migrations:
+
+```text
+0070_add_provider_email_verification_claim.sql
+0080_add_auth_identity_session_owner_key.sql
+0090_enforce_session_identity_owner.sql
+0100_add_auth_transaction_pkce_secret.sql
+```
 
 ## Production boundary
 
-Phase 2A2 product migrations are for local/develop proof only. They must not be executed against production until Governance establishes and authorizes the production migration execution policy.
+Phase 2A2 product migrations and reconciliation migrations are for local/develop proof only. They must not be executed against production until Governance establishes and authorizes the production migration execution policy.
