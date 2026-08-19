@@ -175,3 +175,56 @@ function fc_auth_transaction_consume(
 
     return $statement->rowCount() === 1;
 }
+
+/** @return array<string,mixed>|null */
+function fc_auth_transaction_find_valid(
+    PDO $pdo,
+    string $publicId,
+    string $intent,
+    string $provider,
+    string $rawState,
+    string $rawBrowserSessionBinding,
+    ?int $expectedUserId,
+    bool $forUpdate = false
+): ?array {
+    $intent = fc_contract_value($intent, FC_AUTH_TRANSACTION_INTENTS, 'auth transaction intent');
+    $provider = fc_contract_value($provider, FC_AUTH_PROVIDERS, 'auth provider');
+
+    $sql =
+        'SELECT id, public_id, intent, expected_provider, expected_user_id, state_hash, nonce_hash, ' .
+        ' browser_session_binding_hash, post_auth_destination_key, created_at, expires_at, consumed_at ' .
+        'FROM auth_transactions ' .
+        'WHERE public_id = :public_id ' .
+        '  AND intent = :intent ' .
+        '  AND expected_provider = :provider ' .
+        '  AND state_hash = :state_hash ' .
+        '  AND browser_session_binding_hash = :browser_hash ' .
+        '  AND consumed_at IS NULL ' .
+        '  AND expires_at > CURRENT_TIMESTAMP(6) ';
+
+    $params = [
+        ':public_id' => $publicId,
+        ':intent' => $intent,
+        ':provider' => $provider,
+        ':state_hash' => fc_secret_evidence_hash($rawState),
+        ':browser_hash' => fc_secret_evidence_hash($rawBrowserSessionBinding),
+    ];
+
+    if ($expectedUserId === null) {
+        $sql .= ' AND expected_user_id IS NULL ';
+    } else {
+        $sql .= ' AND expected_user_id = :expected_user_id ';
+        $params[':expected_user_id'] = $expectedUserId;
+    }
+
+    $sql .= 'LIMIT 1';
+    if ($forUpdate) {
+        $sql .= ' FOR UPDATE';
+    }
+
+    $statement = $pdo->prepare($sql);
+    $statement->execute($params);
+    $row = $statement->fetch(PDO::FETCH_ASSOC);
+
+    return $row === false ? null : $row;
+}

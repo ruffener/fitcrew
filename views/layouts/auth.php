@@ -25,5 +25,9 @@
     </main>
     <?php require fc_path('views/partials/footer.php'); ?>
     <script src="/assets/js/app.js?v=<?= fc_e((string) $fitcrewAssetVersion) ?>" defer></script>
+    <?php if (!empty($googleAuthConfig['enabled'])): ?>
+        <script src="https://accounts.google.com/gsi/client" async></script>
+        <script src="/assets/js/google-auth.js?v=<?= fc_e((string) $fitcrewAssetVersion) ?>" defer></script>
+    <?php endif; ?>
 </body>
 </html>

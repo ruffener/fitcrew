@@ -30,3 +30,35 @@ function fc_user_create(
 
     return ['id' => (int) $pdo->lastInsertId(), 'public_id' => $publicId];
 }
+
+/** @return array<string,mixed>|null */
+function fc_user_find_by_id(PDO $pdo, int $userId, bool $forUpdate = false): ?array
+{
+    $sql = 'SELECT * FROM users WHERE id = :id LIMIT 1';
+    if ($forUpdate) {
+        $sql .= ' FOR UPDATE';
+    }
+
+    $statement = $pdo->prepare($sql);
+    $statement->execute([':id' => $userId]);
+    $row = $statement->fetch(PDO::FETCH_ASSOC);
+
+    return $row === false ? null : $row;
+}
+
+function fc_user_set_account_status(PDO $pdo, int $userId, string $status): void
+{
+    $status = fc_contract_value($status, FC_ACCOUNT_STATUSES, 'account status');
+    $statement = $pdo->prepare(
+        'UPDATE users SET account_status = :status, ' .
+        ' suspended_at = CASE WHEN :status_suspended = \'SUSPENDED\' THEN CURRENT_TIMESTAMP(6) ELSE NULL END, ' .
+        ' deactivated_at = CASE WHEN :status_deactivated = \'DEACTIVATED\' THEN CURRENT_TIMESTAMP(6) ELSE NULL END ' .
+        'WHERE id = :id'
+    );
+    $statement->execute([
+        ':status' => $status,
+        ':status_suspended' => $status,
+        ':status_deactivated' => $status,
+        ':id' => $userId,
+    ]);
+}

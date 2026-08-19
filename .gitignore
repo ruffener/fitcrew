@@ -9,3 +9,7 @@
 Thumbs.db
 .idea/
 .vscode/
+
+# Downloaded OAuth client credential files must never enter source control.
+/FitCrew Challenge Authentication.json
+/client_secret_*.json

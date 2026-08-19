@@ -30,7 +30,10 @@ $isAppHeader = $headerVariant === 'app';
             <?php if ($isAppHeader): ?>
                 <a href="/app.php">Overview</a>
                 <a href="/health/google/status.php">Health Connection</a>
-                <a class="nav-action nav-action-outline" href="/logout.php">Logout</a>
+                <form class="nav-logout-form" method="post" action="/logout.php">
+                    <?= fc_csrf_input() ?>
+                    <button class="nav-action nav-action-outline nav-logout-button" type="submit">Logout</button>
+                </form>
             <?php else: ?>
                 <a href="/#how-it-works">How It Works</a>
                 <a href="/#private-by-design">Privacy</a>

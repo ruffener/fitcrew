@@ -105,3 +105,57 @@ function fc_nullable_trimmed(mixed $value): ?string
     $value = trim((string) $value);
     return $value === '' ? null : $value;
 }
+
+/** @return array<string,mixed>|null */
+function fc_auth_identity_find_oidc(PDO $pdo, string $provider, string $issuer, string $providerSubject, bool $forUpdate = false): ?array
+{
+    $provider = fc_contract_value($provider, FC_AUTH_PROVIDERS, 'auth provider');
+    $issuer = trim($issuer);
+    $providerSubject = trim($providerSubject);
+    if ($issuer === '' || $providerSubject === '') {
+        throw new InvalidArgumentException('OIDC issuer and provider subject are required.');
+    }
+
+    $sql =
+        'SELECT i.*, u.public_id AS user_public_id, u.display_name, u.account_status, u.platform_role_code, u.onboarding_completed_at ' .
+        'FROM user_auth_identities i ' .
+        'JOIN users u ON u.id = i.user_id ' .
+        'WHERE i.provider_key = :provider AND i.issuer = :issuer AND i.provider_subject = :subject ' .
+        'LIMIT 1';
+    if ($forUpdate) {
+        $sql .= ' FOR UPDATE';
+    }
+
+    $statement = $pdo->prepare($sql);
+    $statement->execute([
+        ':provider' => $provider,
+        ':issuer' => $issuer,
+        ':subject' => $providerSubject,
+    ]);
+    $row = $statement->fetch(PDO::FETCH_ASSOC);
+
+    return $row === false ? null : $row;
+}
+
+function fc_auth_identity_update_provider_claims(PDO $pdo, int $identityId, array $claims): void
+{
+    $providerEmailVerified = fc_provider_email_verified_claim($claims['provider_email_verified'] ?? null);
+    $observedAt = array_key_exists('provider_email_verified', $claims)
+        ? (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:s.u')
+        : null;
+
+    $statement = $pdo->prepare(
+        'UPDATE user_auth_identities SET ' .
+        ' email_at_provider = :email, ' .
+        ' provider_email_verified = :provider_email_verified, ' .
+        ' email_verification_observed_at = :observed_at, ' .
+        ' last_authenticated_at = CURRENT_TIMESTAMP(6) ' .
+        'WHERE id = :identity_id'
+    );
+    $statement->execute([
+        ':email' => fc_nullable_trimmed($claims['email_at_provider'] ?? null),
+        ':provider_email_verified' => $providerEmailVerified,
+        ':observed_at' => $observedAt,
+        ':identity_id' => $identityId,
+    ]);
+}

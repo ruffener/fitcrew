@@ -91,3 +91,67 @@ function fc_session_revoke_all_for_user(PDO $pdo, int $userId, string $reason): 
 
     return $statement->rowCount();
 }
+
+/** @return array<string,mixed>|null */
+function fc_session_record_resolve_active(PDO $pdo, string $rawSessionId, int $idleSeconds): ?array
+{
+    if ($rawSessionId === '') {
+        return null;
+    }
+
+    $statement = $pdo->prepare(
+        'SELECT ' .
+        ' s.id AS session_record_id, s.user_id, s.auth_identity_id, s.idle_expires_at, s.absolute_expires_at, ' .
+        ' u.public_id, u.display_name, u.account_status, u.platform_role_code, u.timezone, u.locale, u.onboarding_completed_at, ' .
+        ' i.provider_key, i.identity_status ' .
+        'FROM user_sessions s ' .
+        'JOIN users u ON u.id = s.user_id ' .
+        'JOIN user_auth_identities i ON i.id = s.auth_identity_id AND i.user_id = s.user_id ' .
+        'WHERE s.session_id_hash = :session_hash ' .
+        '  AND s.revoked_at IS NULL ' .
+        '  AND s.idle_expires_at > CURRENT_TIMESTAMP(6) ' .
+        '  AND s.absolute_expires_at > CURRENT_TIMESTAMP(6) ' .
+        'LIMIT 1'
+    );
+    $statement->execute([':session_hash' => fc_session_id_hash($rawSessionId)]);
+    $row = $statement->fetch(PDO::FETCH_ASSOC);
+
+    if ($row === false) {
+        return null;
+    }
+
+    if ((string) $row['account_status'] !== 'ACTIVE' || (string) $row['identity_status'] !== 'ACTIVE') {
+        fc_session_revoke($pdo, $rawSessionId, 'account_or_identity_inactive');
+        return null;
+    }
+
+    $absolute = new DateTimeImmutable((string) $row['absolute_expires_at'], new DateTimeZone('UTC'));
+    $candidateIdle = (new DateTimeImmutable('now', new DateTimeZone('UTC')))
+        ->modify(sprintf('+%d seconds', $idleSeconds));
+    $nextIdle = $candidateIdle < $absolute ? $candidateIdle : $absolute;
+
+    $touch = $pdo->prepare(
+        'UPDATE user_sessions SET last_seen_at = CURRENT_TIMESTAMP(6), idle_expires_at = :idle_expires_at ' .
+        'WHERE id = :id AND revoked_at IS NULL'
+    );
+    $touch->execute([
+        ':idle_expires_at' => $nextIdle->format('Y-m-d H:i:s.u'),
+        ':id' => (int) $row['session_record_id'],
+    ]);
+
+    return $row;
+}
+
+function fc_session_count_active_for_user(PDO $pdo, int $userId): int
+{
+    $statement = $pdo->prepare(
+        'SELECT COUNT(*) FROM user_sessions ' .
+        'WHERE user_id = :user_id ' .
+        '  AND revoked_at IS NULL ' .
+        '  AND idle_expires_at > CURRENT_TIMESTAMP(6) ' .
+        '  AND absolute_expires_at > CURRENT_TIMESTAMP(6)'
+    );
+    $statement->execute([':user_id' => $userId]);
+
+    return (int) $statement->fetchColumn();
+}

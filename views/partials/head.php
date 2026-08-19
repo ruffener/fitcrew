@@ -3,9 +3,11 @@
 
 $fitcrewCssPath = fc_path('assets/css/app.css');
 $fitcrewJsPath = fc_path('assets/js/app.js');
+$fitcrewGoogleJsPath = fc_path('assets/js/google-auth.js');
 $fitcrewAssetVersion = max(
     is_file($fitcrewCssPath) ? (int) filemtime($fitcrewCssPath) : 1,
-    is_file($fitcrewJsPath) ? (int) filemtime($fitcrewJsPath) : 1
+    is_file($fitcrewJsPath) ? (int) filemtime($fitcrewJsPath) : 1,
+    is_file($fitcrewGoogleJsPath) ? (int) filemtime($fitcrewGoogleJsPath) : 1
 );
 ?>
 <meta charset="utf-8">

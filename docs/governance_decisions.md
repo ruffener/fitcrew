@@ -23,7 +23,7 @@ This file is a concise current-state summary. Historical decisions that have bee
 | Authentication model | FEDERATED / PASSWORDLESS FIRST |
 | FitCrew-managed passwords | NOT APPROVED — prior email/password MVP direction SUPERSEDED |
 | Email magic-link login | NOT INITIAL MVP |
-| Google Authentication implementation | Phase 2A3 — NOT YET AUTHORIZED pending Phase 2A2 acceptance |
+| Google Authentication implementation | Phase 2A3 — AUTHORIZED for controlled prelaunch production proof |
 | Microsoft Authentication implementation | Phase 2A4 — NOT YET AUTHORIZED |
 | Apple Authentication implementation | Phase 2A5 — NOT YET AUTHORIZED |
 | Authentication identity | Separate from health authorization |
@@ -78,3 +78,19 @@ The following were valid earlier planning decisions but are no longer canonical:
 - `MVP provider: Google Health — Approved` — **SUPERSEDED** by the more precise status: Google Health API is the MVP provider candidate; Health Data Architecture v1.0 is accepted; production readiness is not yet proven.
 - `Final SQL authorization pending` — **SUPERSEDED** by governed incremental numbered migrations authorized per implementation slice.
 - `OPEN_FAMILY` / `PRIVATE_METRICS` — **SUPERSEDED** as product-facing privacy names by `Crew-Shared Measurements` / `Private Measurements`.
+
+## Phase 2A3 Google Authentication
+
+Current governed status:
+
+- Phase 2A2 Account / Identity Foundation: **ACCEPTED / COMPLETE**.
+- Phase 2A3 Google Authentication: **AUTHORIZED — controlled prelaunch production proof**.
+- Proof origin: `https://fitcrewchallenge.com`.
+- Environment classification: **CONTROLLED PRELAUNCH PRODUCTION / PROOF ENVIRONMENT**.
+- Public launch readiness: **NOT AUTHORIZED**.
+- Phase 2A4 Microsoft Authentication: **NOT AUTHORIZED**.
+- Phase 2A5 Apple Authentication: **NOT AUTHORIZED**.
+- Google Health remains separate and is **NOT AUTHORIZED by the Phase 2A3 authentication variance**.
+- New prelaunch Google account creation is controlled by an environment-only allowlist; the gate is not identity truth.
+- Canonical Google identity remains validated issuer + `sub`.
+- Google authentication must not request or store Google Health scopes, access tokens, or refresh tokens.

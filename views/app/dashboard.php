@@ -1,10 +1,14 @@
 <section class="app-page-heading">
     <div>
-        <p class="eyebrow">Protected app shell</p>
-        <h1>Your FitCrew workspace.</h1>
-        <p>This is the branded application foundation future group, challenge, and participant experiences will inherit. No product data is loaded here yet.</p>
+        <p class="eyebrow">Authenticated FitCrew Challenge</p>
+        <h1>Welcome<?= !empty($currentUser['display_name']) ? ', ' . fc_e((string) $currentUser['display_name']) : '' ?>.</h1>
+        <p>Your FitCrew Challenge identity is authenticated. Group, challenge, scoring, and health-data behavior remain separately governed future work.</p>
+        <div class="authenticated-summary">
+            <strong>Signed in with <?= fc_e((string) ($currentUser['provider_key'] ?? 'provider')) ?></strong>
+            <span>Account: <?= fc_e((string) ($currentUser['public_id'] ?? '')) ?></span>
+        </div>
     </div>
-    <span class="status-chip status-chip-neutral"><span aria-hidden="true">○</span> Shell only</span>
+    <span class="status-chip status-chip-neutral"><span aria-hidden="true">●</span> Signed in</span>
 </section>
 
 <section class="app-context-card" aria-label="Future group and challenge context">
@@ -45,7 +49,7 @@
         <div>
             <p class="card-kicker">Health connection</p>
             <h2>Provider connection comes later.</h2>
-            <p>Google Health is the approved MVP provider, but OAuth and imports are intentionally not implemented.</p>
+            <p>Health-data connection remains separately governed and is not part of FitCrew Challenge authentication.</p>
         </div>
         <a class="text-link" href="/health/google/status.php">View placeholder status →</a>
     </article>
