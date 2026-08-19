@@ -21,6 +21,20 @@ jobs:
       - name: Checkout production commit
         uses: actions/checkout@v6
 
+      - name: Setup PHP and Composer
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: composer:v2
+          coverage: none
+
+      - name: Install production dependencies
+        shell: bash
+        run: |
+          composer validate --no-check-publish --strict
+          composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+          test -f vendor/autoload.php
+
       - name: Build production payload
         shell: bash
         run: |
