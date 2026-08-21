@@ -82,6 +82,21 @@ function fc_migration_validate_target(): array
     ];
 }
 
+function fc_migration_checksum(string $path): string
+{
+    $contents = file_get_contents($path);
+    if ($contents === false) {
+        throw new RuntimeException(sprintf('Unable to checksum migration: %s', basename($path)));
+    }
+
+    // Migration history must be portable across Windows and Linux working trees.
+    // Canonicalize text line endings to LF before hashing so Git/ZIP checkout
+    // line-ending conversion cannot make an otherwise identical migration look mutated.
+    $canonicalContents = str_replace(["\r\n", "\r"], "\n", $contents);
+
+    return hash('sha256', $canonicalContents);
+}
+
 /**
  * @return list<array{name:string,path:string,checksum:string}>
  */
@@ -109,10 +124,7 @@ function fc_migration_discover(string $directory): array
             ));
         }
 
-        $checksum = hash_file('sha256', $path);
-        if ($checksum === false) {
-            throw new RuntimeException(sprintf('Unable to checksum migration: %s', $name));
-        }
+        $checksum = fc_migration_checksum($path);
 
         $migrations[] = [
             'name' => $name,

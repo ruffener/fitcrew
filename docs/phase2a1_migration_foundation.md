@@ -38,6 +38,8 @@ The bootstrap migration must remain:
 
 Applied migration files are immutable history. Schema evolution occurs through new migration files.
 
+Checksum comparison is line-ending portable: migration text is normalized to LF before SHA-256 hashing so equivalent Windows CRLF and Linux LF working-tree copies preserve the same immutable migration identity.
+
 ## Migration ledger
 
 Table:
@@ -52,7 +54,7 @@ Contract:
 |---|---|
 | `id` | Monotonic execution order / primary key |
 | `migration` | Unique migration filename |
-| `checksum` | SHA-256 checksum of the exact applied file bytes |
+| `checksum` | SHA-256 checksum of canonical migration text with CRLF/CR line endings normalized to LF |
 | `applied_at` | Database timestamp when the migration was recorded |
 
 The first migration creates the ledger and is then recorded in that ledger.
