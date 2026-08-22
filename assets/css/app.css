@@ -1655,3 +1655,22 @@ textarea:disabled {
     color: var(--fc-text-muted);
     font-size: 0.78rem;
 }
+
+/* Phase 2A4 — Microsoft authentication */
+.microsoft-provider-form {
+    margin: 0;
+}
+
+.microsoft-provider-form .provider-choice {
+    cursor: pointer;
+}
+
+.microsoft-provider-form .provider-choice:hover,
+.microsoft-provider-form .provider-choice:focus-visible {
+    border-color: var(--fc-royal-blue);
+    box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1);
+}
+
+.provider-mark-microsoft {
+    background: #2f2f2f;
+}

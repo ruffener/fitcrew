@@ -39,6 +39,7 @@ require_once __DIR__ . '/identity/session_records.php';
 require_once __DIR__ . '/identity/auth_transactions.php';
 require_once __DIR__ . '/identity/audit_events.php';
 require_once __DIR__ . '/auth/google.php';
+require_once __DIR__ . '/auth/microsoft.php';
 
 $config = fc_config();
 date_default_timezone_set($config['timezone']);

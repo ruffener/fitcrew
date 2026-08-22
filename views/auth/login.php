@@ -1,6 +1,7 @@
 <?php
 $isCreateIntent = ($entryIntent ?? 'signin') === 'create';
 $googleEnabled = (bool) ($googleAuthConfig['enabled'] ?? false);
+$microsoftEnabled = (bool) ($microsoftAuthConfig['enabled'] ?? false);
 ?>
 <section class="auth-card account-entry-card">
     <span class="status-chip status-chip-neutral"><span aria-hidden="true">○</span> Provider authentication</span>
@@ -45,22 +46,34 @@ $googleEnabled = (bool) ($googleAuthConfig['enabled'] ?? false);
             </span>
             <span class="provider-status">Planned</span>
         </button>
-        <button class="provider-choice" type="button" disabled>
-            <span class="provider-mark" aria-hidden="true">M</span>
-            <span class="provider-choice-copy">
-                <strong>Continue with Microsoft</strong>
-                <small>Separate provider slice</small>
-            </span>
-            <span class="provider-status">Planned</span>
-        </button>
+        <?php if ($microsoftEnabled): ?>
+            <form class="microsoft-provider-form" method="post" action="<?= fc_e((string) $microsoftAuthConfig['start_endpoint']) ?>">
+                <input type="hidden" name="csrf_token" value="<?= fc_e((string) $microsoftAuthConfig['csrf_token']) ?>">
+                <button class="provider-choice" type="submit">
+                    <span class="provider-mark provider-mark-microsoft" aria-hidden="true">M</span>
+                    <span class="provider-choice-copy">
+                        <strong>Continue with Microsoft</strong>
+                        <small>Personal and work/school Microsoft accounts</small>
+                    </span>
+                    <span class="provider-status">Available</span>
+                </button>
+            </form>
+        <?php else: ?>
+            <button class="provider-choice" type="button" disabled>
+                <span class="provider-mark" aria-hidden="true">M</span>
+                <span class="provider-choice-copy">
+                    <strong>Continue with Microsoft</strong>
+                    <small><?= fc_e((string) ($microsoftAuthConfig['reason'] ?? 'Authentication setup required')) ?></small>
+                </span>
+                <span class="provider-status">Setup required</span>
+            </button>
+        <?php endif; ?>
     </div>
 
     <div class="account-entry-note">
         <strong>Identity and health data stay separate.</strong>
-        <p>Continue with Google proves who you are to FitCrew Challenge. It does not connect Google Health or grant health-data access.</p>
+        <p>Your selected sign-in provider proves who you are to FitCrew Challenge. It does not connect health data or grant health-data access.</p>
     </div>
 
-    <?php if (!$googleEnabled): ?>
-        <p class="placeholder-note">Google authentication is not enabled until its dedicated client configuration is complete.</p>
-    <?php endif; ?>
+
 </section>

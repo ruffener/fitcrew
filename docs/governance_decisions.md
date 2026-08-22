@@ -23,8 +23,8 @@ This file is a concise current-state summary. Historical decisions that have bee
 | Authentication model | FEDERATED / PASSWORDLESS FIRST |
 | FitCrew-managed passwords | NOT APPROVED — prior email/password MVP direction SUPERSEDED |
 | Email magic-link login | NOT INITIAL MVP |
-| Google Authentication implementation | Phase 2A3 — AUTHORIZED for controlled prelaunch production proof |
-| Microsoft Authentication implementation | Phase 2A4 — NOT YET AUTHORIZED |
+| Google Authentication implementation | Phase 2A3 — ACCEPTED / COMPLETE / PRODUCTION PROVEN |
+| Microsoft Authentication implementation | Phase 2A4 — AUTHORIZED |
 | Apple Authentication implementation | Phase 2A5 — NOT YET AUTHORIZED |
 | Authentication identity | Separate from health authorization |
 | Matching email | Never automatic account-linking or merge truth |
@@ -84,13 +84,29 @@ The following were valid earlier planning decisions but are no longer canonical:
 Current governed status:
 
 - Phase 2A2 Account / Identity Foundation: **ACCEPTED / COMPLETE**.
-- Phase 2A3 Google Authentication: **AUTHORIZED — controlled prelaunch production proof**.
+- Phase 2A3 Google Authentication: **ACCEPTED / COMPLETE / PRODUCTION PROVEN**.
 - Proof origin: `https://fitcrewchallenge.com`.
 - Environment classification: **CONTROLLED PRELAUNCH PRODUCTION / PROOF ENVIRONMENT**.
 - Public launch readiness: **NOT AUTHORIZED**.
-- Phase 2A4 Microsoft Authentication: **NOT AUTHORIZED**.
+- Phase 2A4 Microsoft Authentication: **AUTHORIZED**.
 - Phase 2A5 Apple Authentication: **NOT AUTHORIZED**.
 - Google Health remains separate and is **NOT AUTHORIZED by the Phase 2A3 authentication variance**.
 - New prelaunch Google account creation is controlled by an environment-only allowlist; the gate is not identity truth.
 - Canonical Google identity remains validated issuer + `sub`.
 - Google authentication must not request or store Google Health scopes, access tokens, or refresh tokens.
+
+
+## Phase 2A4 Microsoft Authentication
+
+Current governed status:
+
+- Phase 2A3 Google Authentication: **ACCEPTED / COMPLETE / PRODUCTION PROVEN**.
+- Phase 2A4 Microsoft Authentication: **AUTHORIZED**.
+- Phase 2A5 Apple Authentication: **NOT YET AUTHORIZED**.
+- Microsoft account audience: organizational directories + personal Microsoft accounts.
+- Microsoft flow: Authorization Code + OpenID Connect + PKCE S256.
+- Canonical Microsoft identity: validated `tid` + `oid`; email is descriptive evidence only.
+- Requested scope family: `openid profile email`; `offline_access` and Microsoft Graph product permissions are excluded.
+- New Microsoft proof identities are gated by an environment-only validated `tid:oid` allowlist.
+- No schema migration is authorized or expected for Phase 2A4.
+- Public launch remains **NOT AUTHORIZED**.

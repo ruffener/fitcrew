@@ -137,6 +137,36 @@ function fc_auth_identity_find_oidc(PDO $pdo, string $provider, string $issuer, 
     return $row === false ? null : $row;
 }
 
+/** @return array<string,mixed>|null */
+function fc_auth_identity_find_microsoft(PDO $pdo, string $tenantId, string $objectId, bool $forUpdate = false): ?array
+{
+    $tenantId = strtolower(trim($tenantId));
+    $objectId = strtolower(trim($objectId));
+    if ($tenantId === '' || $objectId === '') {
+        throw new InvalidArgumentException('Microsoft tenant ID and object ID are required.');
+    }
+
+    $sql =
+        'SELECT i.*, u.public_id AS user_public_id, u.display_name, u.account_status, u.platform_role_code, u.onboarding_completed_at ' .
+        'FROM user_auth_identities i ' .
+        'JOIN users u ON u.id = i.user_id ' .
+        'WHERE i.provider_key = :provider AND i.provider_tenant_id = :tenant_id AND i.provider_object_id = :object_id ' .
+        'LIMIT 1';
+    if ($forUpdate) {
+        $sql .= ' FOR UPDATE';
+    }
+
+    $statement = $pdo->prepare($sql);
+    $statement->execute([
+        ':provider' => 'MICROSOFT',
+        ':tenant_id' => $tenantId,
+        ':object_id' => $objectId,
+    ]);
+    $row = $statement->fetch(PDO::FETCH_ASSOC);
+
+    return $row === false ? null : $row;
+}
+
 function fc_auth_identity_update_provider_claims(PDO $pdo, int $identityId, array $claims): void
 {
     $providerEmailVerified = fc_provider_email_verified_claim($claims['provider_email_verified'] ?? null);
