@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 header('Cache-Control: no-store, no-cache, must-revalidate');
 header('Pragma: no-cache');
-header('Referrer-Policy: no-referrer');
+// The bridge immediately reposts to a same-origin completion endpoint. A
+// no-referrer policy serializes that POST's Origin as "null"; same-origin keeps
+// the concrete FitCrew Origin while suppressing referrers to every other origin.
+header('Referrer-Policy: same-origin');
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: DENY');
 

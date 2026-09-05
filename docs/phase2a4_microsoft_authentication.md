@@ -93,6 +93,7 @@ Continue with Microsoft
 → response_mode=form_post
 → callback bridge receives code/state without URL query logging
 → bridge performs no session/database work
+→ bridge preserves a concrete same-origin Origin for completion
 → same-origin POST /auth/microsoft/complete.php
 → FitCrew SameSite=Lax session/browser binding available
 → validate transaction/state/browser
@@ -108,7 +109,7 @@ Continue with Microsoft
 → APP_HOME
 ```
 
-The callback bridge intentionally does not load FitCrew bootstrap/session state. A cross-site `form_post` callback is incompatible with depending on a SameSite=Lax cookie on that first request; the bridge lets the browser return to FitCrew origin first and then reposts to the same-origin completion endpoint. This keeps the authorization code out of the URL while preserving the accepted host-only SameSite=Lax FitCrew cookie contract.
+The callback bridge intentionally does not load FitCrew bootstrap/session state. A cross-site `form_post` callback is incompatible with depending on a SameSite=Lax cookie on that first request; the bridge lets the browser return to FitCrew origin first and then reposts to the same-origin completion endpoint. The bridge uses `Referrer-Policy: same-origin` so that local repost carries the concrete FitCrew `Origin` required by the completion endpoint while referrers remain suppressed for every other origin. Missing, opaque (`null`), and foreign origins remain rejected. This keeps the authorization code out of the URL while preserving the accepted host-only SameSite=Lax FitCrew cookie contract.
 
 ## Canonical Microsoft identity
 

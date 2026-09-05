@@ -290,6 +290,8 @@ PEM;
     fc_ms_test_assert(FC_MICROSOFT_SCOPES === 'openid profile email', 'Microsoft scopes are not the exact authentication-only scope set');
     fc_ms_test_assert(!str_contains(FC_MICROSOFT_SCOPES, 'offline_access'), 'Microsoft offline_access was requested');
     fc_ms_test_assert(fc_microsoft_request_origin_valid('https://fitcrewchallenge.com'), 'Microsoft same-origin request was rejected');
+    fc_ms_test_assert(!fc_microsoft_request_origin_valid(null), 'Microsoft missing-origin request was accepted');
+    fc_ms_test_assert(!fc_microsoft_request_origin_valid('null'), 'Microsoft opaque-origin request was accepted');
     fc_ms_test_assert(!fc_microsoft_request_origin_valid('https://evil.example'), 'Microsoft wrong-origin request was accepted');
 
     $loginView = file_get_contents(fc_path('views/auth/login.php')) ?: '';
@@ -316,6 +318,8 @@ PEM;
 
     $callbackSource = file_get_contents(fc_path('auth/microsoft/callback.php')) ?: '';
     fc_ms_test_assert(strpos($callbackSource, 'inc/bootstrap.php') === false, 'Microsoft form_post bridge starts a FitCrew session and can overwrite SameSite=Lax browser binding');
+    fc_ms_test_assert(strpos($callbackSource, "header('Referrer-Policy: same-origin');") !== false, 'Microsoft form_post bridge does not preserve a concrete same-origin completion Origin');
+    fc_ms_test_assert(strpos($callbackSource, "header('Referrer-Policy: no-referrer');") === false, 'Microsoft form_post bridge still serializes its completion Origin as null');
 
     $migrationSource = '';
     foreach (glob(fc_path('database/migrations/*.sql')) ?: [] as $migrationFile) {
@@ -345,7 +349,7 @@ PEM;
     echo "- provider email verification remains UNKNOWN: PASS\n";
     echo "- tid+oid prelaunch gate / email cannot bypass gate: PASS\n";
     echo "- no offline_access / Microsoft Graph scope: PASS\n";
-    echo "- form_post bridge preserves SameSite=Lax browser binding: PASS\n";
+    echo "- form_post bridge preserves concrete Origin + SameSite=Lax browser binding: PASS\n";
     echo "- Google → Apple → Microsoft UI order: PASS\n";
     echo "- no Microsoft token/code/client-secret persistence columns: PASS\n";
     echo "- Microsoft secret redaction coverage: PASS\n";
