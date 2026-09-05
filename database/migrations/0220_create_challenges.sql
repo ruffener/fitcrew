@@ -1,0 +1,20 @@
+CREATE TABLE challenges (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    public_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    crew_id BIGINT UNSIGNED NOT NULL,
+    owner_user_id BIGINT UNSIGNED NOT NULL,
+    display_name VARCHAR(140) NOT NULL,
+    lifecycle_status VARCHAR(32) NOT NULL DEFAULT 'DRAFT',
+    operational_state VARCHAR(24) NOT NULL DEFAULT 'NORMAL',
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    completed_at DATETIME(6) NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_challenges_public_id (public_id),
+    KEY idx_challenges_crew_lifecycle (crew_id, lifecycle_status),
+    KEY idx_challenges_owner (owner_user_id),
+    CONSTRAINT fk_challenges_crew FOREIGN KEY (crew_id) REFERENCES crews(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_challenges_owner FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE RESTRICT,
+    CONSTRAINT chk_challenges_lifecycle CHECK (lifecycle_status IN ('DRAFT', 'FORMING_CREW', 'BASELINE', 'READY_TO_LAUNCH', 'LIVE', 'FINAL_WEEK_LIVE', 'RESULTS_UNDER_REVIEW', 'COMPLETED')),
+    CONSTRAINT chk_challenges_operational CHECK (operational_state IN ('NORMAL', 'NEEDS_ATTENTION'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

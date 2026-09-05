@@ -9,8 +9,7 @@ fc_require_login();
 $currentUser = fc_current_user();
 $pdo = fc_db();
 $appContext = fc_product_context($pdo, (int) $currentUser['user_id']);
-$appSection = 'overview';
-
-$title = 'Overview';
-$contentView = 'views/app/dashboard.php';
+$appSection = 'account';
+$title = 'Account';
+$contentView = 'views/app/account.php';
 require fc_path('views/layouts/app.php');

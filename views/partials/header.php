@@ -13,9 +13,11 @@ $isAppHeader = $headerVariant === 'app';
         </a>
 
         <?php if ($isAppHeader): ?>
-            <div class="app-header-context" aria-label="Application context">
-                <span class="context-label">Protected app shell</span>
-                <span class="status-chip status-chip-neutral"><span aria-hidden="true">○</span> Placeholder</span>
+            <div class="app-header-context" aria-label="Current FitCrew context">
+                <span class="context-label">Current context</span>
+                <strong><?= isset($appContext['crew']) && $appContext['crew'] !== null ? fc_e((string) $appContext['crew']['display_name']) : 'No Crew yet' ?></strong>
+                <span aria-hidden="true">/</span>
+                <em><?= isset($appContext['challenge']) && $appContext['challenge'] !== null ? fc_e((string) $appContext['challenge']['display_name']) : 'No Current Challenge' ?></em>
             </div>
         <?php endif; ?>
 
@@ -29,10 +31,12 @@ $isAppHeader = $headerVariant === 'app';
         <nav class="site-nav" id="primary-navigation" aria-label="Primary navigation">
             <?php if ($isAppHeader): ?>
                 <a href="/app.php">Overview</a>
-                <a href="/health/google/status.php">Health Connection</a>
+                <a href="/crew.php">Crew</a>
+                <a href="/challenge.php">Challenge</a>
+                <a href="/health/google/status.php">Health Connections</a>
                 <form class="nav-logout-form" method="post" action="/logout.php">
                     <?= fc_csrf_input() ?>
-                    <button class="nav-action nav-action-outline nav-logout-button" type="submit">Logout</button>
+                    <button class="nav-action nav-action-outline nav-logout-button" type="submit">Sign Out</button>
                 </form>
             <?php else: ?>
                 <a href="/#how-it-works">How It Works</a>

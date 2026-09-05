@@ -72,7 +72,9 @@ try {
     foreach ($expectedTables as $table) {
         fc_test_assert(in_array($table, $tables, true), sprintf('Expected Phase 2A2 table is missing: %s', $table));
     }
-    foreach (['groups', 'group_members', 'challenges', 'health_provider_connections', 'raw_health_imports', 'official_daily_logs'] as $forbidden) {
+    // Authorized product tables may coexist with the identity foundation. Keep this
+    // boundary focused on legacy names and downstream runtimes that remain held.
+    foreach (['groups', 'group_members', 'health_provider_connections', 'raw_health_imports', 'official_daily_logs'] as $forbidden) {
         fc_test_assert(!in_array($forbidden, $tables, true), sprintf('Unauthorized table exists: %s', $forbidden));
     }
 
@@ -388,7 +390,7 @@ try {
     echo "- auth transaction binding / expiry / single-use / destination allowlist: PASS\n";
     echo "- recoverable protected PKCE verifier lifecycle: PASS\n";
     echo "- audit secret redaction: PASS\n";
-    echo "- unauthorized product-table boundary: PASS\n";
+    echo "- held downstream / legacy product-table boundary: PASS\n";
     exit(0);
 } catch (Throwable $error) {
     if ($pdo->inTransaction()) {

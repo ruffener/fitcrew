@@ -1,0 +1,20 @@
+CREATE TABLE crew_memberships (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    crew_id BIGINT UNSIGNED NOT NULL,
+    user_id BIGINT UNSIGNED NOT NULL,
+    role_code VARCHAR(20) NOT NULL DEFAULT 'MEMBER',
+    membership_status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    joined_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    left_at DATETIME(6) NULL,
+    removed_at DATETIME(6) NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_crew_memberships_crew_user (crew_id, user_id),
+    KEY idx_crew_memberships_user_status (user_id, membership_status),
+    KEY idx_crew_memberships_crew_status (crew_id, membership_status),
+    CONSTRAINT fk_crew_memberships_crew FOREIGN KEY (crew_id) REFERENCES crews(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_crew_memberships_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,
+    CONSTRAINT chk_crew_memberships_role CHECK (role_code IN ('OWNER', 'MEMBER')),
+    CONSTRAINT chk_crew_memberships_status CHECK (membership_status IN ('ACTIVE', 'LEFT', 'REMOVED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

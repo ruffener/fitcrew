@@ -1,5 +1,5 @@
-# groups Module
+# groups Module — Legacy Placeholder Name
 
-Reserved for a future approved implementation phase.
+The product term is now **Crew**. Wave 1 implements Crew identity/membership through the governed product services in `inc/product/` and the `crews` / `crew_memberships` tables.
 
-Phase 1 skeleton does not implement product behavior in this module.
+Do not introduce new participant-facing “Group” terminology from this legacy placeholder directory.

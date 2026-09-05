@@ -61,3 +61,16 @@ Examples include:
 - billing
 
 The Google Sheets prototype remains product evidence, not database architecture.
+
+## Wave 1 — Core Product Spine
+
+Authorized Wave 1 adds the first durable product tables after the accepted authentication foundation:
+
+- `crews` — private persistent Crew identity and Owner;
+- `crew_memberships` — server-authorized Crew membership/role/status;
+- `challenges` — Crew-scoped Challenge identity, Owner, lifecycle and operational state;
+- `challenge_participations` — explicit Challenge competitor relationship distinct from Crew membership;
+- `challenge_rule_versions` — typed draft/published immutable version foundation for the Challenge contract;
+- `user_product_contexts` — selected Crew/Challenge preference only; never authorization truth.
+
+Held Wave 2–4 tables are intentionally absent. No Health import/official-log, scoring result/standings, Challenge Monies, recognition, payment, or billing runtime is introduced by Wave 1.

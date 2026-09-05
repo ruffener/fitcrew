@@ -1,7 +1,7 @@
 <section class="panel placeholder-panel">
-    <span class="status-chip status-chip-neutral"><span aria-hidden="true">○</span> Intentional placeholder</span>
-    <p class="eyebrow">Future capability</p>
-    <h1><?= fc_e($pageHeading ?? 'Planned Page') ?></h1>
-    <p><?= fc_e($pageMessage ?? 'This page is reserved for a later approved implementation phase.') ?></p>
-    <a class="button button-secondary" href="/">Return to FitCrew home</a>
+    <span class="status-chip status-chip-neutral"><span aria-hidden="true">○</span> Not available yet</span>
+    <p class="eyebrow">FitCrew</p>
+    <h1>This capability is not available yet.</h1>
+    <p>FitCrew will only enable this capability when its governed runtime is ready.</p>
+    <a class="button button-secondary" href="/app.php">Return to Overview</a>
 </section>

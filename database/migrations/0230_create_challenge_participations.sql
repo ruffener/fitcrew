@@ -1,0 +1,20 @@
+CREATE TABLE challenge_participations (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    challenge_id BIGINT UNSIGNED NOT NULL,
+    user_id BIGINT UNSIGNED NOT NULL,
+    participation_status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    entry_kind VARCHAR(20) NOT NULL DEFAULT 'STANDARD',
+    joined_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    withdrawn_at DATETIME(6) NULL,
+    removed_at DATETIME(6) NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_challenge_participations_challenge_user (challenge_id, user_id),
+    KEY idx_challenge_participations_user_status (user_id, participation_status),
+    KEY idx_challenge_participations_challenge_status (challenge_id, participation_status),
+    CONSTRAINT fk_challenge_participations_challenge FOREIGN KEY (challenge_id) REFERENCES challenges(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_challenge_participations_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,
+    CONSTRAINT chk_challenge_participation_status CHECK (participation_status IN ('ACTIVE', 'WITHDRAWN', 'REMOVED')),
+    CONSTRAINT chk_challenge_participation_entry CHECK (entry_kind IN ('STANDARD', 'LATE'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

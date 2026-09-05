@@ -1,5 +1,5 @@
 # participants Module
 
-Reserved for a future approved implementation phase.
+Wave 1 implements explicit Challenge participation through `challenge_participations` and `inc/product/challenges.php`.
 
-Phase 1 skeleton does not implement product behavior in this module.
+Crew membership does not automatically create Challenge participation. Withdrawal preserves participation history rather than deleting the relationship.

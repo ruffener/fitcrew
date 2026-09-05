@@ -30,4 +30,23 @@
             closeMenu();
         }
     });
+
+    const moreToggle = document.querySelector('.mobile-more-toggle');
+    const moreMenu = document.getElementById('mobile-more-menu');
+
+    if (moreToggle && moreMenu) {
+        moreToggle.addEventListener('click', () => {
+            const expanded = moreToggle.getAttribute('aria-expanded') === 'true';
+            moreToggle.setAttribute('aria-expanded', String(!expanded));
+            moreMenu.hidden = expanded;
+        });
+
+        document.addEventListener('click', (event) => {
+            if (moreMenu.hidden || moreMenu.contains(event.target) || moreToggle.contains(event.target)) {
+                return;
+            }
+            moreToggle.setAttribute('aria-expanded', 'false');
+            moreMenu.hidden = true;
+        });
+    }
 })();

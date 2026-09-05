@@ -1,5 +1,5 @@
 # challenges Module
 
-Reserved for a future approved implementation phase.
+Wave 1 implements the Challenge identity, participation, lifecycle, rule-version, authorization, and selected-context foundations through `inc/product/`.
 
-Phase 1 skeleton does not implement product behavior in this module.
+Held downstream Scoring, Health, Challenge Monies, Recognition, and payment runtimes remain outside this module’s Wave 1 authority.
