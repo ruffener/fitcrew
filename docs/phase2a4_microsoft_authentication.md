@@ -79,6 +79,25 @@ PRELAUNCH_MICROSOFT_ALLOWED_IDENTITIES
 
 Secret values never belong in Git, documentation examples with real values, audit events, or test fixtures.
 
+Token-endpoint failures are reduced to fixed local audit classifications:
+
+```text
+code_exchange_invalid_client
+code_exchange_invalid_grant
+code_exchange_invalid_scope
+code_exchange_unauthorized_client
+code_exchange_provider_unavailable
+code_exchange_transport_failed
+code_exchange_response_invalid
+code_exchange_failed
+```
+
+Microsoft's raw `error_description`, numeric provider error codes, trace/correlation identifiers,
+authorization code, client secret, and returned token material are not logged or persisted. The
+browser-facing failure remains generic; the fixed audit classification exists only to distinguish
+configuration, one-time-code/PKCE, provider availability, and transport/response failures during
+controlled production proof.
+
 ## Authorization / callback sequence
 
 ```text

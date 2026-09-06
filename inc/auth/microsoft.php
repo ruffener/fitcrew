@@ -315,15 +315,33 @@ function fc_microsoft_http_json_get(string $url): array
     return $decoded;
 }
 
+/** @param array<string,mixed> $response */
+function fc_microsoft_code_exchange_exception_code(array $response): string
+{
+    $providerError = $response['error'] ?? null;
+    if (!is_string($providerError)) {
+        return 'microsoft_code_exchange_failed';
+    }
+
+    return match (strtolower(trim($providerError))) {
+        'invalid_client' => 'microsoft_code_exchange_invalid_client',
+        'invalid_grant' => 'microsoft_code_exchange_invalid_grant',
+        'invalid_scope' => 'microsoft_code_exchange_invalid_scope',
+        'unauthorized_client' => 'microsoft_code_exchange_unauthorized_client',
+        'server_error', 'temporarily_unavailable' => 'microsoft_code_exchange_provider_unavailable',
+        default => 'microsoft_code_exchange_failed',
+    };
+}
+
 /** @return array<string,mixed> */
 function fc_microsoft_http_post_form_json(string $url, array $fields): array
 {
     $curl = curl_init($url);
     if ($curl === false) {
-        throw new RuntimeException('Unable to initialize Microsoft token HTTP client.');
+        throw new DomainException('microsoft_code_exchange_transport_failed');
     }
 
-    curl_setopt_array($curl, [
+    $optionsSet = curl_setopt_array($curl, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_FOLLOWLOCATION => false,
         CURLOPT_POST => true,
@@ -338,21 +356,36 @@ function fc_microsoft_http_post_form_json(string $url, array $fields): array
         ],
         CURLOPT_USERAGENT => 'FitCrewChallenge/MicrosoftAuth',
     ]);
+    if (!$optionsSet) {
+        curl_close($curl);
+        throw new DomainException('microsoft_code_exchange_transport_failed');
+    }
+
     $body = curl_exec($curl);
     $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
     curl_close($curl);
 
     if (!is_string($body)) {
-        throw new DomainException('microsoft_code_exchange_failed');
+        throw new DomainException('microsoft_code_exchange_transport_failed');
     }
 
     try {
         $decoded = json_decode($body, true, 128, JSON_THROW_ON_ERROR);
     } catch (Throwable) {
-        throw new DomainException('microsoft_code_exchange_failed');
+        throw new DomainException('microsoft_code_exchange_response_invalid');
     }
 
-    if (!is_array($decoded) || $status < 200 || $status >= 300) {
+    if (!is_array($decoded)) {
+        throw new DomainException('microsoft_code_exchange_response_invalid');
+    }
+
+    if ($status < 200 || $status >= 300) {
+        // Retain only a fixed local classification. Microsoft error descriptions,
+        // trace identifiers, codes, authorization codes, and tokens are discarded.
+        throw new DomainException(fc_microsoft_code_exchange_exception_code($decoded));
+    }
+
+    if ($decoded === []) {
         throw new DomainException('microsoft_code_exchange_failed');
     }
 
@@ -765,6 +798,13 @@ function fc_microsoft_audit_rejection(PDO $pdo, string $reason, ?int $actorUserI
         'transaction_failed',
         'provider_error',
         'code_exchange_failed',
+        'code_exchange_invalid_client',
+        'code_exchange_invalid_grant',
+        'code_exchange_invalid_scope',
+        'code_exchange_unauthorized_client',
+        'code_exchange_provider_unavailable',
+        'code_exchange_transport_failed',
+        'code_exchange_response_invalid',
         'pkce_failed',
         'token_failed',
         'nonce_failed',

@@ -241,6 +241,31 @@ PEM;
     $deniedClaims['email_at_provider'] = 'same-email@example.com';
     fc_ms_test_assert(!fc_microsoft_prelaunch_allows_new_account($deniedClaims), 'matching email bypassed Microsoft tid+oid prelaunch gate');
 
+    $exchangeFailureCases = [
+        'invalid_client' => 'microsoft_code_exchange_invalid_client',
+        'invalid_grant' => 'microsoft_code_exchange_invalid_grant',
+        'invalid_scope' => 'microsoft_code_exchange_invalid_scope',
+        'unauthorized_client' => 'microsoft_code_exchange_unauthorized_client',
+        'server_error' => 'microsoft_code_exchange_provider_unavailable',
+        'temporarily_unavailable' => 'microsoft_code_exchange_provider_unavailable',
+        'unrecognized_provider_error' => 'microsoft_code_exchange_failed',
+    ];
+    foreach ($exchangeFailureCases as $providerError => $expectedExceptionCode) {
+        fc_ms_test_assert(
+            fc_microsoft_code_exchange_exception_code([
+                'error' => $providerError,
+                'error_description' => 'sensitive provider detail must be ignored',
+                'trace_id' => 'provider-trace-must-be-ignored',
+                'correlation_id' => 'provider-correlation-must-be-ignored',
+            ]) === $expectedExceptionCode,
+            'Microsoft code-exchange error was not safely classified: ' . $providerError
+        );
+    }
+    fc_ms_test_assert(
+        fc_microsoft_code_exchange_exception_code(['error' => ['invalid_client']]) === 'microsoft_code_exchange_failed',
+        'non-string Microsoft code-exchange error was not reduced to the generic classification'
+    );
+
     $transportCalls = 0;
     $expectedVerifier = $verifier;
     $usedCodes = [];
@@ -315,6 +340,9 @@ PEM;
     fc_ms_test_assert(strpos($microsoftSource, "'code_challenge_method' => 'S256'") !== false, 'Microsoft PKCE S256 is absent');
     fc_ms_test_assert(stripos($microsoftSource, 'google health') === false, 'Microsoft auth source crossed Google Health boundary');
     fc_ms_test_assert(stripos($microsoftSource, 'graph.microsoft.com') === false, 'Microsoft Graph product integration was introduced');
+    fc_ms_test_assert(strpos($microsoftSource, "['error_description']") === false, 'Microsoft raw token error description is inspected or retained');
+    fc_ms_test_assert(strpos($microsoftSource, "['trace_id']") === false, 'Microsoft raw token trace identifier is inspected or retained');
+    fc_ms_test_assert(strpos($microsoftSource, "['correlation_id']") === false, 'Microsoft raw token correlation identifier is inspected or retained');
 
     $callbackSource = file_get_contents(fc_path('auth/microsoft/callback.php')) ?: '';
     fc_ms_test_assert(strpos($callbackSource, 'inc/bootstrap.php') === false, 'Microsoft form_post bridge starts a FitCrew session and can overwrite SameSite=Lax browser binding');
@@ -353,6 +381,7 @@ PEM;
     echo "- Google → Apple → Microsoft UI order: PASS\n";
     echo "- no Microsoft token/code/client-secret persistence columns: PASS\n";
     echo "- Microsoft secret redaction coverage: PASS\n";
+    echo "- safe token-endpoint failure classification / raw detail discard: PASS\n";
     echo "- same-origin + CSRF start controls: PASS\n";
 } catch (Throwable $e) {
     fwrite(STDERR, '[FAIL] ' . $e->getMessage() . PHP_EOL);
