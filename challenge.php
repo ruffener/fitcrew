@@ -26,9 +26,10 @@ if (fc_is_post()) {
             }
             $challenge = fc_challenge_create($pdo, $userId, (int) $context['crew']['id'], (string) ($_POST['display_name'] ?? ''), [
                 'planned_start_date' => $_POST['planned_start_date'] ?? null,
-                'duration_days' => (int) ($_POST['duration_days'] ?? 56),
+                'planned_end_date' => $_POST['planned_end_date'] ?? null,
+                'duration_days' => (int) ($_POST['duration_days'] ?? 84),
                 'challenge_timezone' => (string) ($_POST['challenge_timezone'] ?? fc_config()['timezone']),
-                'weekly_checkin_day' => (int) ($_POST['weekly_checkin_day'] ?? 0),
+                'weekly_checkin_day' => (int) ($_POST['weekly_checkin_day'] ?? 6),
                 'live_leaderboard_visible' => isset($_POST['live_leaderboard_visible']),
             ]);
             fc_product_context_select_challenge($pdo, $userId, (int) $challenge['id']);

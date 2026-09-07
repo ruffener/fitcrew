@@ -28,7 +28,8 @@ if (fc_is_post()) {
         if ($action === 'save_draft') {
             fc_challenge_rule_save_draft($pdo, $userId, (int) $challenge['id'], (int) ($_POST['rule_id'] ?? 0), [
                 'planned_start_date' => $_POST['planned_start_date'] ?? null,
-                'duration_days' => (int) ($_POST['duration_days'] ?? 0),
+                'planned_end_date' => $_POST['planned_end_date'] ?? null,
+                'duration_days' => (int) ($_POST['duration_days'] ?? 84),
                 'challenge_timezone' => (string) ($_POST['challenge_timezone'] ?? ''),
                 'weekly_checkin_day' => (int) ($_POST['weekly_checkin_day'] ?? -1),
                 'live_leaderboard_visible' => isset($_POST['live_leaderboard_visible']),

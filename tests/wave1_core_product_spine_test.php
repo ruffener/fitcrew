@@ -65,9 +65,9 @@ try {
 
     $challenge = fc_challenge_create($pdo, $owner['id'], $crew['id'], 'Wave1 Challenge', [
         'planned_start_date' => '2026-09-15',
-        'duration_days' => 56,
+        'planned_end_date' => '2026-12-08',
         'challenge_timezone' => 'America/New_York',
-        'weekly_checkin_day' => 0,
+        'weekly_checkin_day' => 6,
         'live_leaderboard_visible' => true,
     ]);
 
@@ -84,6 +84,8 @@ try {
 
     $draft = fc_challenge_rule_current_draft($pdo, $challenge['id']);
     wave1_assert($draft !== null && (int) $draft['version_number'] === 1, 'Challenge creation must establish Rule Version 1 draft.');
+    wave1_assert((int) $draft['duration_days'] === 84, 'Planned start/end dates must resolve to the canonical 12-week / 84-day duration.');
+    wave1_assert((int) $draft['weekly_checkin_day'] === 6, 'New Challenge setup must preserve the Saturday check-in default.');
     wave1_assert((string) $draft['scoring_standard_code'] === FC_CERTIFIED_SCORING_STANDARD, 'Wave 1 must reference the certified scoring standard without changing it.');
 
     wave1_expect_denied(

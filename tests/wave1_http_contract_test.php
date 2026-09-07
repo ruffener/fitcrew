@@ -33,6 +33,33 @@ foreach (['Home', 'Participants', 'Standings', 'History', 'Rules', 'aria-disable
     }
 }
 
+
+$challengeCreate = file_get_contents($root . '/views/app/challenge/create.php') ?: '';
+foreach (['planned_end_date', 'data-default-duration="84"', 'value="6" selected', 'Show provisional standings while the Challenge is live.', 'Step 1 of 2'] as $required) {
+    if (!str_contains($challengeCreate, $required)) {
+        throw new RuntimeException('Challenge setup UX contract is missing: ' . $required);
+    }
+}
+
+$rulesView = file_get_contents($root . '/views/app/challenge/rules.php') ?: '';
+foreach (['planned_end_date', 'Step 2 of 2', 'Show provisional standings while the Challenge is live.'] as $required) {
+    if (!str_contains($rulesView, $required)) {
+        throw new RuntimeException('Rules setup UX contract is missing: ' . $required);
+    }
+}
+
+$dashboard = file_get_contents($root . '/views/app/dashboard.php') ?: '';
+if (!str_contains($dashboard, 'class="action-cue">Start here</p>') || str_contains($dashboard, 'status-chip status-chip-orange">Start here</span>')) {
+    throw new RuntimeException('Overview Start here cue is not positioned as non-button helper text.');
+}
+
+$js = file_get_contents($root . '/assets/js/app.js') ?: '';
+foreach (['data-challenge-dates', 'data-planned-end', 'defaultDays'] as $required) {
+    if (!str_contains($js, $required)) {
+        throw new RuntimeException('Challenge date calculation behavior is missing: ' . $required);
+    }
+}
+
 $health = file_get_contents($root . '/views/app/health/google_status.php') ?: '';
 if (!str_contains($health, 'Connection is not available yet.') || !str_contains($health, 'Connected ≠ Official.')) {
     throw new RuntimeException('Health Connection placeholder does not preserve truthful held-runtime language.');
@@ -52,3 +79,5 @@ fwrite(STDOUT, "- Overview / Crew / Challenge navigation: PASS\n");
 fwrite(STDOUT, "- held Standings / History destinations marked unavailable: PASS\n");
 fwrite(STDOUT, "- truthful held Health runtime state: PASS\n");
 fwrite(STDOUT, "- mobile navigation / focus-visible accessibility foundation: PASS\n");
+fwrite(STDOUT, "- Challenge setup dates/defaults/progress + consumer copy: PASS\n");
+fwrite(STDOUT, "- Overview Start here helper cue: PASS\n");

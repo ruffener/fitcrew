@@ -20,8 +20,6 @@ $welcomeName = $firstName !== '' ? $firstName : 'there';
         <span class="status-chip status-chip-blue"><?= fc_e(fc_challenge_lifecycle_label((string) $challenge['lifecycle_status'], (string) $challenge['operational_state'])) ?></span>
     <?php elseif ($crew !== null): ?>
         <span class="status-chip status-chip-success">Crew ready</span>
-    <?php else: ?>
-        <span class="status-chip status-chip-orange">Start here</span>
     <?php endif; ?>
 </section>
 
@@ -32,6 +30,7 @@ $welcomeName = $firstName !== '' ? $firstName : 'there';
         <p class="card-kicker">Your Crew</p>
         <h2>Bring your people together.</h2>
         <p>A Crew is your private home base. Challenges come and go; your Crew stays together.</p>
+        <p class="action-cue">Start here</p>
         <a class="button button-primary" href="/crew.php">Create your Crew</a>
     </div>
 </section>

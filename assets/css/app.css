@@ -2365,6 +2365,73 @@ textarea:disabled {
     gap: 0.6rem;
 }
 
+.action-cue {
+    margin: 0.75rem 0 0.35rem !important;
+    color: var(--fc-orange) !important;
+    font-size: 0.64rem !important;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.setup-section-bar {
+    margin-top: 0;
+    align-items: flex-start;
+}
+
+.setup-progress {
+    min-width: 150px;
+    display: grid;
+    gap: 0.2rem;
+    justify-items: end;
+    color: var(--fc-text-muted);
+    text-align: right;
+}
+
+.setup-progress > span:first-child {
+    font-size: 0.54rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.setup-progress strong {
+    color: var(--fc-deep-navy);
+    font-size: 0.75rem;
+}
+
+.setup-progress-track {
+    width: 112px;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--fc-border);
+}
+
+.setup-progress-track i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--fc-orange);
+}
+
+.checkbox-field span {
+    display: grid;
+    gap: 0.12rem;
+}
+
+.checkbox-field span strong {
+    color: var(--fc-deep-navy);
+    font-size: 0.68rem;
+}
+
+.checkbox-field span small {
+    color: var(--fc-text-muted);
+    font-size: 0.6rem;
+    font-weight: 600;
+    line-height: 1.45;
+}
+
 .button-small {
     min-height: 38px;
     padding: 0.55rem 0.8rem;
@@ -2622,6 +2689,21 @@ textarea:disabled {
 
     .form-span-2 {
         grid-column: auto;
+    }
+
+    .setup-section-bar {
+        display: grid;
+        align-items: start;
+    }
+
+    .setup-progress {
+        min-width: 0;
+        justify-items: start;
+        text-align: left;
+    }
+
+    .setup-progress-track {
+        width: 96px;
     }
 
     .status-action-card {

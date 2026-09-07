@@ -32,15 +32,17 @@ function fc_challenge_rule_draft_create(PDO $pdo, int $challengeId, int $actorUs
         if (!fc_product_timezone_is_valid($timezone)) {
             throw new InvalidArgumentException('Challenge timezone is invalid.');
         }
-        $duration = (int) ($values['duration_days'] ?? 56);
-        if ($duration < 7 || $duration > 365) {
-            throw new InvalidArgumentException('Challenge duration must be between 7 and 365 days.');
-        }
-        $checkinDay = (int) ($values['weekly_checkin_day'] ?? 0);
+        $plannedStart = fc_rule_date_or_null($values['planned_start_date'] ?? null);
+        $duration = fc_rule_duration_days_resolve(
+            $plannedStart,
+            $values['planned_end_date'] ?? null,
+            $values['duration_days'] ?? 84,
+            84
+        );
+        $checkinDay = (int) ($values['weekly_checkin_day'] ?? 6);
         if ($checkinDay < 0 || $checkinDay > 6) {
             throw new InvalidArgumentException('Weekly check-in day must be between Sunday and Saturday.');
         }
-        $plannedStart = fc_rule_date_or_null($values['planned_start_date'] ?? null);
         $liveVisible = !array_key_exists('live_leaderboard_visible', $values) || (bool) $values['live_leaderboard_visible'];
         $publicId = fc_new_public_id();
         $supersedesVersionId = isset($values['supersedes_version_id']) ? (int) $values['supersedes_version_id'] : null;
@@ -81,7 +83,7 @@ function fc_challenge_rule_draft_create(PDO $pdo, int $challengeId, int $actorUs
     });
 }
 
-function fc_rule_date_or_null(mixed $value): ?string
+function fc_rule_date_or_null(mixed $value, string $label = 'Challenge start date'): ?string
 {
     $value = trim((string) ($value ?? ''));
     if ($value === '') {
@@ -89,9 +91,65 @@ function fc_rule_date_or_null(mixed $value): ?string
     }
     $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
     if (!$parsed || $parsed->format('Y-m-d') !== $value) {
-        throw new InvalidArgumentException('Challenge start date must be a valid date.');
+        throw new InvalidArgumentException($label . ' must be a valid date.');
     }
     return $value;
+}
+
+function fc_rule_duration_days_resolve(?string $plannedStart, mixed $plannedEndValue, mixed $durationValue, int $defaultDays = 84): int
+{
+    $plannedEnd = fc_rule_date_or_null($plannedEndValue, 'Challenge end date');
+
+    if ($plannedEnd !== null) {
+        if ($plannedStart === null) {
+            throw new InvalidArgumentException('Set a planned Challenge start date before setting an end date.');
+        }
+
+        $start = new DateTimeImmutable($plannedStart);
+        $end = new DateTimeImmutable($plannedEnd);
+        if ($end <= $start) {
+            throw new InvalidArgumentException('Challenge end date must be after the planned start date.');
+        }
+
+        $duration = (int) $start->diff($end)->days;
+    } else {
+        $duration = (int) ($durationValue ?? $defaultDays);
+        if ($duration === 0) {
+            $duration = $defaultDays;
+        }
+    }
+
+    if ($duration < 7 || $duration > 365) {
+        throw new InvalidArgumentException('Challenge duration must be between 7 and 365 days.');
+    }
+
+    return $duration;
+}
+
+function fc_rule_planned_end_date(?string $plannedStart, int $durationDays): ?string
+{
+    if ($plannedStart === null || $plannedStart === '') {
+        return null;
+    }
+
+    $start = new DateTimeImmutable($plannedStart);
+    return $start->modify('+' . $durationDays . ' days')->format('Y-m-d');
+}
+
+function fc_rule_duration_summary(int $durationDays): string
+{
+    if ($durationDays % 7 === 0) {
+        $weeks = intdiv($durationDays, 7);
+        return $weeks . ($weeks === 1 ? ' week' : ' weeks') . ' · ' . $durationDays . ' days';
+    }
+
+    $weeks = intdiv($durationDays, 7);
+    $days = $durationDays % 7;
+    if ($weeks > 0) {
+        return $weeks . ($weeks === 1 ? ' week' : ' weeks') . ' + ' . $days . ($days === 1 ? ' day' : ' days') . ' · ' . $durationDays . ' days';
+    }
+
+    return $durationDays . ' days';
 }
 
 /** @return array<string,mixed>|null */
@@ -155,15 +213,17 @@ function fc_challenge_rule_save_draft(PDO $pdo, int $actorUserId, int $challenge
         if (!fc_product_timezone_is_valid($timezone)) {
             throw new InvalidArgumentException('Challenge timezone is invalid.');
         }
-        $duration = (int) ($values['duration_days'] ?? 0);
-        if ($duration < 7 || $duration > 365) {
-            throw new InvalidArgumentException('Challenge duration must be between 7 and 365 days.');
-        }
+        $plannedStart = fc_rule_date_or_null($values['planned_start_date'] ?? null);
+        $duration = fc_rule_duration_days_resolve(
+            $plannedStart,
+            $values['planned_end_date'] ?? null,
+            $values['duration_days'] ?? 84,
+            84
+        );
         $checkinDay = (int) ($values['weekly_checkin_day'] ?? -1);
         if ($checkinDay < 0 || $checkinDay > 6) {
             throw new InvalidArgumentException('Weekly check-in day is invalid.');
         }
-        $plannedStart = fc_rule_date_or_null($values['planned_start_date'] ?? null);
         $liveVisible = (bool) ($values['live_leaderboard_visible'] ?? false);
 
         $update = $pdo->prepare(
