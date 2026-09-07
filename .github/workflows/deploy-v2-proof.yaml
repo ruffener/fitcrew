@@ -1,4 +1,4 @@
-name: FitCrew Deployment v2 D2-0 + D2-1 Proof
+name: FitCrew Deployment v2 Proof + Non-Deleting Deploy
 
 on:
   push:
@@ -8,17 +8,30 @@ on:
       - '.github/workflows/deploy-v2-proof.yaml'
       - '.github/deployment/**'
   workflow_dispatch:
+    inputs:
+      phase:
+        description: 'Run proof only, or authorized D2-2 non-deleting production deployment'
+        required: true
+        default: 'proof'
+        type: choice
+        options:
+          - proof
+          - d2-2
+      confirmation:
+        description: 'For d2-2 only, enter DEPLOY-NON-DELETING'
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: fitcrew-deployment-v2-proof
+  group: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2' && 'fitcrew-production' || 'fitcrew-deployment-v2-proof' }}
   cancel-in-progress: false
 
 jobs:
   prove:
-    name: Prove GitHub SSH and Incremental rsync Dry Run
+    name: Prove GitHub SSH, Fast Vendor Path, and Incremental rsync
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -29,9 +42,10 @@ jobs:
       SSH_PORT: '22'
       PROD_PATH: ${{ secrets.PROD_PATH }}
       SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+      APP_URL: https://fitcrewchallenge.com
 
     steps:
-      - name: Checkout Deployment v2 proof candidate
+      - name: Checkout Deployment v2 candidate
         uses: actions/checkout@v6
         with:
           path: proof-repo
@@ -57,12 +71,29 @@ jobs:
           printf 'Production payload source commit: `%s`\n' "$commit" >> "$GITHUB_STEP_SUMMARY"
           printf 'Exact origin/main synchronization inside proof runner: **PASS**\n' >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Authorize D2-2 invocation
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2' }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "${{ github.ref_name }}" == "develop" ]] || {
+            echo "D2-2 proof implementation must run from develop." >&2
+            exit 1
+          }
+          [[ "${{ inputs.confirmation }}" == "DEPLOY-NON-DELETING" ]] || {
+            echo "D2-2 confirmation phrase did not match." >&2
+            exit 1
+          }
+          echo 'D2-2 operator confirmation: **PASS / NON-DELETING ONLY**' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Install runner SSH password helper
         shell: bash
         run: |
           set -Eeuo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq sshpass
+          if ! command -v sshpass >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq sshpass
+          fi
           command -v sshpass >/dev/null
           command -v rsync >/dev/null
 
@@ -72,7 +103,55 @@ jobs:
           set -Eeuo pipefail
           proof-repo/.github/deployment/deploy-v2-proof.sh probe
 
+      - name: Fingerprint vendor-sensitive inputs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          proof-repo/.github/deployment/build-production-payload.sh fingerprint \
+            "$GITHUB_WORKSPACE/production-source" \
+            "$RUNNER_TEMP/fitcrew-deployment-proof"
+
+      - name: Check certified remote vendor fast path
+        id: vendor_status
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          proof-repo/.github/deployment/deploy-v2-proof.sh vendor-status \
+            "" \
+            "$RUNNER_TEMP/fitcrew-deployment-proof"
+
+          fast="$(sed -n 's/^VENDOR_FAST_PATH=//p' "$RUNNER_TEMP/fitcrew-deployment-proof/vendor-status.txt")"
+          reason="$(sed -n 's/^VENDOR_REASON=//p' "$RUNNER_TEMP/fitcrew-deployment-proof/vendor-status.txt")"
+          vendor_sha="$(sed -n 's/^VENDOR_MANIFEST_SHA256=//p' "$RUNNER_TEMP/fitcrew-deployment-proof/vendor-status.txt")"
+          vendor_count="$(sed -n 's/^VENDOR_FILE_COUNT=//p' "$RUNNER_TEMP/fitcrew-deployment-proof/vendor-status.txt")"
+          vendor_bytes="$(sed -n 's/^VENDOR_BYTES=//p' "$RUNNER_TEMP/fitcrew-deployment-proof/vendor-status.txt")"
+
+          [[ "$fast" == "0" || "$fast" == "1" ]]
+          echo "fast=$fast" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "vendor_sha=$vendor_sha" >> "$GITHUB_OUTPUT"
+          echo "vendor_count=${vendor_count:-0}" >> "$GITHUB_OUTPUT"
+          echo "vendor_bytes=${vendor_bytes:-0}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo
+            echo '## Vendor fast-path decision'
+            echo
+            if [[ "$fast" == "1" ]]; then
+              echo '- Certified remote vendor verification: **PASS**'
+              echo '- Composer/vendor rebuild in CI: **SKIPPED**'
+              printf -- '- Certified vendor manifest SHA-256: `%s`\n' "$vendor_sha"
+              printf -- '- Certified vendor files: `%s`\n' "$vendor_count"
+              printf -- '- Certified vendor bytes: `%s`\n' "$vendor_bytes"
+            else
+              echo '- Certified remote vendor fast path: **UNAVAILABLE**'
+              printf -- '- Reason: `%s`\n' "$reason"
+              echo '- Composer/vendor rebuild in CI: **REQUIRED**'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Setup PHP and Composer
+        if: ${{ steps.vendor_status.outputs.fast != '1' }}
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.1'
@@ -80,6 +159,7 @@ jobs:
           coverage: none
 
       - name: Construct exact main production dependencies
+        if: ${{ steps.vendor_status.outputs.fast != '1' }}
         shell: bash
         working-directory: production-source
         run: |
@@ -87,20 +167,33 @@ jobs:
           composer validate --no-check-publish --strict
           composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
           test -f vendor/autoload.php
-
-          # Composer/payload preparation may create ignored files such as vendor/,
-          # but it must not alter tracked production source.
           git diff --exit-code
           test -z "$(git status --porcelain --untracked-files=no)"
 
-      - name: Build canonical production payload and deterministic manifest
+      - name: Build canonical production payload identity
         shell: bash
         run: |
           set -Eeuo pipefail
-          proof-repo/.github/deployment/build-production-payload.sh \
+          if [[ '${{ steps.vendor_status.outputs.fast }}' == '1' ]]; then
+            vendor_mode='app-only'
+            vendor_sha='${{ steps.vendor_status.outputs.vendor_sha }}'
+            vendor_count='${{ steps.vendor_status.outputs.vendor_count }}'
+            vendor_bytes='${{ steps.vendor_status.outputs.vendor_bytes }}'
+          else
+            vendor_mode='full'
+            vendor_sha=''
+            vendor_count='0'
+            vendor_bytes='0'
+          fi
+
+          proof-repo/.github/deployment/build-production-payload.sh build \
             "$GITHUB_WORKSPACE/production-source" \
             "$RUNNER_TEMP/fitcrew-production-payload" \
-            "$RUNNER_TEMP/fitcrew-deployment-proof"
+            "$RUNNER_TEMP/fitcrew-deployment-proof" \
+            "$vendor_mode" \
+            "$vendor_sha" \
+            "$vendor_count" \
+            "$vendor_bytes"
 
           {
             echo
@@ -120,7 +213,61 @@ jobs:
             "$RUNNER_TEMP/fitcrew-production-payload" \
             "$RUNNER_TEMP/fitcrew-deployment-proof"
 
-      - name: Preserve D2-0 / D2-1 proof package
+      - name: D2-2 — non-deleting incremental rsync production deployment
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2' }}
+        shell: bash
+        env:
+          MAIN_COMMIT: ${{ steps.main_source.outputs.commit }}
+        run: |
+          set -Eeuo pipefail
+          proof-repo/.github/deployment/deploy-v2-proof.sh deploy \
+            "$RUNNER_TEMP/fitcrew-production-payload" \
+            "$RUNNER_TEMP/fitcrew-deployment-proof"
+
+      - name: D2-2 — verify governed payload and advance certification
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2' }}
+        shell: bash
+        env:
+          MAIN_COMMIT: ${{ steps.main_source.outputs.commit }}
+        run: |
+          set -Eeuo pipefail
+          proof-repo/.github/deployment/deploy-v2-proof.sh verify-certify \
+            "$RUNNER_TEMP/fitcrew-production-payload" \
+            "$RUNNER_TEMP/fitcrew-deployment-proof"
+
+      - name: D2-2 — production HTTP and security smoke
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2' }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          root_status="$(curl -sS -o /dev/null -w '%{http_code}' "$APP_URL/")"
+          [[ "$root_status" == '200' ]] || {
+            echo "Production root HTTP smoke failed: $root_status" >&2
+            exit 1
+          }
+
+          for path in '/.env' '/.git/HEAD' '/.fitcrew-deployment/current.env'; do
+            status="$(curl -sS -o /dev/null -w '%{http_code}' "$APP_URL$path")"
+            case "$status" in
+              403|404) ;;
+              *)
+                echo "Security smoke failed for $path: HTTP $status" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          {
+            echo
+            echo '## D2-2 — HTTP/security smoke'
+            echo
+            echo '- Production root HTTP 200: **PASS**'
+            echo '- `.env` HTTP exposure: **BLOCKED**'
+            echo '- `.git` HTTP exposure: **BLOCKED**'
+            echo '- Deployment certification metadata HTTP exposure: **BLOCKED / OUTSIDE WEB ROOT**'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve Deployment v2 proof package
         if: always()
         uses: actions/upload-artifact@v4
         with:
