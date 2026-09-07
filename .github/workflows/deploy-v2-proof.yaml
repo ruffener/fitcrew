@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
-    env:      
+    env:
       SSH_HOST: ruffener.com
       SSH_USER: ruffener
       SSH_PASS: ${{ secrets.SFTP_PASS }}
