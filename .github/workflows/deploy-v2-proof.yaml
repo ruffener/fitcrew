@@ -22,11 +22,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
-    env:
-      SSH_HOST: ${{ secrets.SFTP_HOST }}
-      SSH_USER: ${{ secrets.SFTP_USER }}
+    env:      
+      SSH_HOST: ruffener.com
+      SSH_USER: ruffener
       SSH_PASS: ${{ secrets.SFTP_PASS }}
-      SSH_PORT: ${{ secrets.SFTP_PORT }}
+      SSH_PORT: '22'
       PROD_PATH: ${{ secrets.PROD_PATH }}
       SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
 
