@@ -1,0 +1,130 @@
+name: FitCrew Deployment v2 D2-0 + D2-1 Proof
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - '.github/workflows/deploy-v2-proof.yaml'
+      - '.github/deployment/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fitcrew-deployment-v2-proof
+  cancel-in-progress: false
+
+jobs:
+  prove:
+    name: Prove GitHub SSH and Incremental rsync Dry Run
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      SSH_HOST: ${{ secrets.SFTP_HOST }}
+      SSH_USER: ${{ secrets.SFTP_USER }}
+      SSH_PASS: ${{ secrets.SFTP_PASS }}
+      SSH_PORT: ${{ secrets.SFTP_PORT }}
+      PROD_PATH: ${{ secrets.PROD_PATH }}
+      SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+
+    steps:
+      - name: Checkout Deployment v2 proof candidate
+        uses: actions/checkout@v6
+        with:
+          path: proof-repo
+
+      - name: Checkout exact current main payload source
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          path: production-source
+
+      - name: Record exact main source identity
+        id: main_source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git -C production-source fetch --quiet origin main
+          commit="$(git -C production-source rev-parse HEAD)"
+          origin_main="$(git -C production-source rev-parse FETCH_HEAD)"
+          test -n "$commit"
+          test "$commit" = "$origin_main"
+          test -z "$(git -C production-source status --porcelain)"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          printf 'Production payload source commit: `%s`\n' "$commit" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Exact origin/main synchronization inside proof runner: **PASS**\n' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install runner SSH password helper
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass
+          command -v sshpass >/dev/null
+          command -v rsync >/dev/null
+
+      - name: D2-0 — read-only GitHub SSH credential probe
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          proof-repo/.github/deployment/deploy-v2-proof.sh probe
+
+      - name: Setup PHP and Composer
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: composer:v2
+          coverage: none
+
+      - name: Construct exact main production dependencies
+        shell: bash
+        working-directory: production-source
+        run: |
+          set -Eeuo pipefail
+          composer validate --no-check-publish --strict
+          composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+          test -f vendor/autoload.php
+
+          # Composer/payload preparation may create ignored files such as vendor/,
+          # but it must not alter tracked production source.
+          git diff --exit-code
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Build canonical production payload and deterministic manifest
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          proof-repo/.github/deployment/build-production-payload.sh \
+            "$GITHUB_WORKSPACE/production-source" \
+            "$RUNNER_TEMP/fitcrew-production-payload" \
+            "$RUNNER_TEMP/fitcrew-deployment-proof"
+
+          {
+            echo
+            echo '## Canonical payload construction'
+            echo
+            printf -- '- Exact main commit: `%s`\n' '${{ steps.main_source.outputs.commit }}'
+            while IFS='=' read -r key value; do
+              printf -- '- %s: `%s`\n' "$key" "$value"
+            done < "$RUNNER_TEMP/fitcrew-deployment-proof/payload-summary.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: D2-1 — incremental rsync dry run / no delete
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          proof-repo/.github/deployment/deploy-v2-proof.sh dry-run \
+            "$RUNNER_TEMP/fitcrew-production-payload" \
+            "$RUNNER_TEMP/fitcrew-deployment-proof"
+
+      - name: Preserve D2-0 / D2-1 proof package
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fitcrew-deployment-v2-proof-${{ github.run_id }}
+          path: ${{ runner.temp }}/fitcrew-deployment-proof/
+          if-no-files-found: warn
+          retention-days: 30
