@@ -1,4 +1,4 @@
-name: FitCrew Deployment v2 Proof + Non-Deleting Deploy
+name: FitCrew Deployment v2 Fast Delta Proof + Non-Deleting Deploy
 
 on:
   push:
@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   prove:
-    name: Prove GitHub SSH, Fast Vendor Path, and Incremental rsync
+    name: Prove certified delta and deploy only required application files
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -50,10 +50,11 @@ jobs:
         with:
           path: proof-repo
 
-      - name: Checkout exact current main payload source
+      - name: Checkout exact current main payload source with history
         uses: actions/checkout@v6
         with:
           ref: main
+          fetch-depth: 0
           path: production-source
 
       - name: Record exact main source identity
@@ -103,7 +104,196 @@ jobs:
           set -Eeuo pipefail
           proof-repo/.github/deployment/deploy-v2-proof.sh probe
 
+      - name: Read current deployment certification
+        id: cert_status
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          proof_dir="$RUNNER_TEMP/fitcrew-deployment-proof"
+          mkdir -p "$proof_dir"
+          proof-repo/.github/deployment/deploy-v2-proof.sh cert-status "" "$proof_dir"
+
+          available="$(sed -n 's/^CERT_AVAILABLE=//p' "$proof_dir/cert-status.txt")"
+          reason="$(sed -n 's/^CERT_REASON=//p' "$proof_dir/cert-status.txt")"
+          certified_commit="$(sed -n 's/^GIT_COMMIT=//p' "$proof_dir/cert-status.txt")"
+          vendor_input="$(sed -n 's/^VENDOR_INPUT_SHA256=//p' "$proof_dir/cert-status.txt")"
+          vendor_manifest="$(sed -n 's/^VENDOR_MANIFEST_SHA256=//p' "$proof_dir/cert-status.txt")"
+          vendor_count="$(sed -n 's/^VENDOR_FILE_COUNT=//p' "$proof_dir/cert-status.txt")"
+          vendor_bytes="$(sed -n 's/^VENDOR_BYTES=//p' "$proof_dir/cert-status.txt")"
+
+          [[ "$available" == "0" || "$available" == "1" ]]
+          echo "available=$available" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "certified_commit=$certified_commit" >> "$GITHUB_OUTPUT"
+          echo "vendor_input=$vendor_input" >> "$GITHUB_OUTPUT"
+          echo "vendor_manifest=$vendor_manifest" >> "$GITHUB_OUTPUT"
+          echo "vendor_count=${vendor_count:-0}" >> "$GITHUB_OUTPUT"
+          echo "vendor_bytes=${vendor_bytes:-0}" >> "$GITHUB_OUTPUT"
+
+      - name: Classify Git delta from certified production to current main
+        id: delta
+        shell: bash
+        env:
+          CERT_AVAILABLE: ${{ steps.cert_status.outputs.available }}
+          CERTIFIED_COMMIT: ${{ steps.cert_status.outputs.certified_commit }}
+          MAIN_COMMIT: ${{ steps.main_source.outputs.commit }}
+        run: |
+          set -Eeuo pipefail
+          proof_dir="$RUNNER_TEMP/fitcrew-deployment-proof"
+          mkdir -p "$proof_dir"
+
+          if [[ "$CERT_AVAILABLE" != "1" ]]; then
+            : > "$proof_dir/changed-production-files.txt"
+            : > "$proof_dir/deleted-production-files.txt"
+            : > "$proof_dir/change-scope.tsv"
+            echo 'noop=0' >> "$GITHUB_OUTPUT"
+            echo 'certified_chain=0' >> "$GITHUB_OUTPUT"
+            echo 'changed_total=unknown' >> "$GITHUB_OUTPUT"
+            echo 'production_changed=unknown' >> "$GITHUB_OUTPUT"
+            echo 'production_deleted=unknown' >> "$GITHUB_OUTPUT"
+            {
+              echo
+              echo '## Certified delta classification'
+              echo
+              echo '- Existing deployment certification: **UNAVAILABLE**'
+              echo '- Fast delta chain: **UNAVAILABLE / FULL FALLBACK REQUIRED**'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          git -C production-source cat-file -e "$CERTIFIED_COMMIT^{commit}" || {
+            echo "Certified production commit is not available in main history: $CERTIFIED_COMMIT" >&2
+            exit 31
+          }
+          git -C production-source merge-base --is-ancestor "$CERTIFIED_COMMIT" "$MAIN_COMMIT" || {
+            echo "Certified production commit is not an ancestor of current main; refusing fast-chain deployment." >&2
+            exit 32
+          }
+
+          if [[ "$CERTIFIED_COMMIT" == "$MAIN_COMMIT" ]]; then
+            : > "$proof_dir/changed-production-files.txt"
+            : > "$proof_dir/deleted-production-files.txt"
+            : > "$proof_dir/change-scope.tsv"
+            echo 'noop=1' >> "$GITHUB_OUTPUT"
+            echo 'certified_chain=1' >> "$GITHUB_OUTPUT"
+            echo 'changed_total=0' >> "$GITHUB_OUTPUT"
+            echo 'production_changed=0' >> "$GITHUB_OUTPUT"
+            echo 'production_deleted=0' >> "$GITHUB_OUTPUT"
+            {
+              echo
+              echo '## Certified delta classification'
+              echo
+              printf -- '- Certified production commit: `%s`\n' "$CERTIFIED_COMMIT"
+              echo '- Git changes since certification: **0**'
+              echo '- Deployment action: **NO-OP / ALREADY CERTIFIED**'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          python3 - "$CERTIFIED_COMMIT" "$MAIN_COMMIT" "$GITHUB_WORKSPACE/production-source" "$proof_dir" <<'PY'
+          import os, subprocess, sys
+          from pathlib import Path
+
+          base, target, repo, proof = sys.argv[1:]
+          repo = Path(repo)
+          proof = Path(proof)
+
+          excluded_exact = {
+              '.gitignore', 'README.md', 'CHANGED_FILES.txt',
+              'DELETE_THESE_FILES.txt', 'PHASE1B_ROOT_APPLY.txt'
+          }
+          excluded_prefixes = (
+              '.deploy/', '.git/', '.github/', 'docs/', 'tests/', 'branding/'
+          )
+
+          def forbidden(path: str) -> bool:
+              return path == '.env' or path.startswith('.env.')
+
+          def production_path(path: str) -> bool:
+              if forbidden(path):
+                  raise SystemExit(f'Forbidden tracked .env boundary change detected: {path}')
+              if path in excluded_exact or path.startswith(excluded_prefixes):
+                  return False
+              return True
+
+          raw = subprocess.check_output(
+              ['git', '-C', str(repo), 'diff', '--name-status', '-M', '-z', base, target]
+          )
+          items = raw.split(b'\0')
+          i = 0
+          records = []
+          changed_target = set()
+          deleted = set()
+          total = 0
+
+          while i < len(items) and items[i]:
+              status = items[i].decode('utf-8', 'surrogateescape')
+              i += 1
+              total += 1
+              code = status[0]
+              if code in ('R', 'C'):
+                  old = items[i].decode('utf-8', 'surrogateescape'); i += 1
+                  new = items[i].decode('utf-8', 'surrogateescape'); i += 1
+                  records.append((status, old, new))
+                  if code == 'R' and production_path(old):
+                      deleted.add(old)
+                  if production_path(new) and (repo / new).is_file():
+                      changed_target.add(new)
+              else:
+                  path = items[i].decode('utf-8', 'surrogateescape'); i += 1
+                  records.append((status, path, ''))
+                  if code == 'D':
+                      if production_path(path):
+                          deleted.add(path)
+                  elif production_path(path) and (repo / path).is_file():
+                      changed_target.add(path)
+
+          (proof / 'change-scope.tsv').write_text(
+              ''.join('\t'.join(r) + '\n' for r in records), encoding='utf-8'
+          )
+          (proof / 'changed-production-files.txt').write_text(
+              ''.join(p + '\n' for p in sorted(changed_target)), encoding='utf-8'
+          )
+          (proof / 'deleted-production-files.txt').write_text(
+              ''.join(p + '\n' for p in sorted(deleted)), encoding='utf-8'
+          )
+          (proof / 'delta-counts.env').write_text(
+              f'changed_total={total}\n'
+              f'production_changed={len(changed_target)}\n'
+              f'production_deleted={len(deleted)}\n', encoding='utf-8'
+          )
+          PY
+
+          changed_total="$(sed -n 's/^changed_total=//p' "$proof_dir/delta-counts.env")"
+          production_changed="$(sed -n 's/^production_changed=//p' "$proof_dir/delta-counts.env")"
+          production_deleted="$(sed -n 's/^production_deleted=//p' "$proof_dir/delta-counts.env")"
+          echo 'noop=0' >> "$GITHUB_OUTPUT"
+          echo 'certified_chain=1' >> "$GITHUB_OUTPUT"
+          echo "changed_total=$changed_total" >> "$GITHUB_OUTPUT"
+          echo "production_changed=$production_changed" >> "$GITHUB_OUTPUT"
+          echo "production_deleted=$production_deleted" >> "$GITHUB_OUTPUT"
+
+          {
+            echo
+            echo '## Certified delta classification'
+            echo
+            printf -- '- Certified production commit: `%s`\n' "$CERTIFIED_COMMIT"
+            printf -- '- Target main commit: `%s`\n' "$MAIN_COMMIT"
+            printf -- '- Git change records: `%s`\n' "$changed_total"
+            printf -- '- Existing production files requiring upload consideration: `%s`\n' "$production_changed"
+            printf -- '- Deleted production paths recorded / NOT deleted: `%s`\n' "$production_deleted"
+            echo '- Certified commit ancestry: **PASS**'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Stop early when current main is already certified
+        if: ${{ steps.delta.outputs.noop == '1' }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo 'Current main already equals the certified production commit. No payload construction, Composer, rsync, or remote hashing is required.'
+
       - name: Fingerprint vendor-sensitive inputs
+        if: ${{ steps.delta.outputs.noop != '1' }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -111,7 +301,8 @@ jobs:
             "$GITHUB_WORKSPACE/production-source" \
             "$RUNNER_TEMP/fitcrew-deployment-proof"
 
-      - name: Check certified remote vendor fast path
+      - name: Check certified vendor continuity without re-hashing vendor
+        if: ${{ steps.delta.outputs.noop != '1' }}
         id: vendor_status
         shell: bash
         run: |
@@ -135,31 +326,29 @@ jobs:
 
           {
             echo
-            echo '## Vendor fast-path decision'
+            echo '## Vendor decision'
             echo
             if [[ "$fast" == "1" ]]; then
-              echo '- Certified remote vendor verification: **PASS**'
+              echo '- Vendor-sensitive inputs: **UNCHANGED FROM CERTIFIED BASELINE**'
+              echo '- Remote vendor byte re-hash: **SKIPPED**'
               echo '- Composer/vendor rebuild in CI: **SKIPPED**'
               printf -- '- Certified vendor manifest SHA-256: `%s`\n' "$vendor_sha"
-              printf -- '- Certified vendor files: `%s`\n' "$vendor_count"
-              printf -- '- Certified vendor bytes: `%s`\n' "$vendor_bytes"
             else
-              echo '- Certified remote vendor fast path: **UNAVAILABLE**'
-              printf -- '- Reason: `%s`\n' "$reason"
+              printf -- '- Fast vendor reuse: **UNAVAILABLE** / `%s`\n' "$reason"
               echo '- Composer/vendor rebuild in CI: **REQUIRED**'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Setup PHP and Composer
-        if: ${{ steps.vendor_status.outputs.fast != '1' }}
+      - name: Setup PHP and Composer only when vendor inputs changed
+        if: ${{ steps.delta.outputs.noop != '1' && steps.vendor_status.outputs.fast != '1' }}
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.1'
           tools: composer:v2
           coverage: none
 
-      - name: Construct exact main production dependencies
-        if: ${{ steps.vendor_status.outputs.fast != '1' }}
+      - name: Construct exact main production dependencies only when required
+        if: ${{ steps.delta.outputs.noop != '1' && steps.vendor_status.outputs.fast != '1' }}
         shell: bash
         working-directory: production-source
         run: |
@@ -170,7 +359,8 @@ jobs:
           git diff --exit-code
           test -z "$(git status --porcelain --untracked-files=no)"
 
-      - name: Build canonical production payload identity
+      - name: Build canonical application identity
+        if: ${{ steps.delta.outputs.noop != '1' }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -197,7 +387,7 @@ jobs:
 
           {
             echo
-            echo '## Canonical payload construction'
+            echo '## Canonical payload identity'
             echo
             printf -- '- Exact main commit: `%s`\n' '${{ steps.main_source.outputs.commit }}'
             while IFS='=' read -r key value; do
@@ -205,27 +395,37 @@ jobs:
             done < "$RUNNER_TEMP/fitcrew-deployment-proof/payload-summary.txt"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: D2-1 — incremental rsync dry run / no delete
+      - name: D2-1 — Git-diff-scoped rsync dry run / no delete
+        if: ${{ steps.delta.outputs.noop != '1' }}
         shell: bash
+        env:
+          VENDOR_FAST: ${{ steps.vendor_status.outputs.fast }}
         run: |
           set -Eeuo pipefail
+          if [[ "$VENDOR_FAST" == '1' && '${{ steps.delta.outputs.certified_chain }}' == '1' ]]; then
+            export RSYNC_FILE_LIST="$RUNNER_TEMP/fitcrew-deployment-proof/changed-production-files.txt"
+          fi
           proof-repo/.github/deployment/deploy-v2-proof.sh dry-run \
             "$RUNNER_TEMP/fitcrew-production-payload" \
             "$RUNNER_TEMP/fitcrew-deployment-proof"
 
-      - name: D2-2 — non-deleting incremental rsync production deployment
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2' }}
+      - name: D2-2 — non-deleting Git-diff-scoped production deployment
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2' && steps.delta.outputs.noop != '1' }}
         shell: bash
         env:
           MAIN_COMMIT: ${{ steps.main_source.outputs.commit }}
+          VENDOR_FAST: ${{ steps.vendor_status.outputs.fast }}
         run: |
           set -Eeuo pipefail
+          if [[ "$VENDOR_FAST" == '1' && '${{ steps.delta.outputs.certified_chain }}' == '1' ]]; then
+            export RSYNC_FILE_LIST="$RUNNER_TEMP/fitcrew-deployment-proof/changed-production-files.txt"
+          fi
           proof-repo/.github/deployment/deploy-v2-proof.sh deploy \
             "$RUNNER_TEMP/fitcrew-production-payload" \
             "$RUNNER_TEMP/fitcrew-deployment-proof"
 
-      - name: D2-2 — verify governed payload and advance certification
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2' }}
+      - name: D2-2 — verify application and advance certification
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2' && steps.delta.outputs.noop != '1' }}
         shell: bash
         env:
           MAIN_COMMIT: ${{ steps.main_source.outputs.commit }}
@@ -245,7 +445,6 @@ jobs:
             echo "Production root HTTP smoke failed: $root_status" >&2
             exit 1
           }
-
           for path in '/.env' '/.git/HEAD' '/.fitcrew-deployment/current.env'; do
             status="$(curl -sS -o /dev/null -w '%{http_code}' "$APP_URL$path")"
             case "$status" in
@@ -256,7 +455,6 @@ jobs:
                 ;;
             esac
           done
-
           {
             echo
             echo '## D2-2 — HTTP/security smoke'
@@ -267,8 +465,8 @@ jobs:
             echo '- Deployment certification metadata HTTP exposure: **BLOCKED / OUTSIDE WEB ROOT**'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Preserve Deployment v2 proof package
-        if: always()
+      - name: Preserve proof package only for D2-2 or failures
+        if: ${{ failure() || (github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2') }}
         uses: actions/upload-artifact@v4
         with:
           name: fitcrew-deployment-v2-proof-${{ github.run_id }}

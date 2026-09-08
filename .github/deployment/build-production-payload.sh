@@ -41,8 +41,8 @@ fingerprint_vendor_inputs() {
   local proof_dir="${2:?proof directory required}"
 
   source_root="$(cd "$source_root" && pwd -P)"
-  rm -rf "$proof_dir"
   mkdir -p "$proof_dir"
+  rm -f "$proof_dir/vendor-input-manifest.tsv" "$proof_dir/vendor-input.sha256" "$proof_dir/vendor-input-summary.txt"
   proof_dir="$(cd "$proof_dir" && pwd -P)"
 
   [[ -f "$source_root/composer.json" ]] || { echo "composer.json missing" >&2; exit 1; }

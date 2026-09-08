@@ -118,14 +118,42 @@ make_rsync_ssh_wrapper() {
   printf '%s' "$wrapper"
 }
 
+cert_status() {
+  [[ -n "$PROOF_DIR" ]] || { echo "Proof directory required." >&2; exit 1; }
+  mkdir -p "$PROOF_DIR"
+
+  local output
+  output="$("${SSH_BASE[@]}" "$REMOTE" "CERT_DIR=$CERT_DIR bash -se" <<'REMOTE_CERT_STATUS'
+set -Eeuo pipefail
+cert="$HOME/$CERT_DIR"
+if [[ ! -f "$cert/current.env" ]]; then
+  echo 'CERT_AVAILABLE=0'
+  echo 'CERT_REASON=no-deployment-certification'
+  exit 0
+fi
+for key in git_commit payload_identity_sha256 application_manifest_sha256 vendor_input_sha256 vendor_manifest_sha256 vendor_file_count vendor_bytes; do
+  value="$(sed -n "s/^${key}=//p" "$cert/current.env")"
+  [[ -n "$value" ]] || {
+    echo 'CERT_AVAILABLE=0'
+    echo 'CERT_REASON=incomplete-deployment-certification'
+    exit 0
+  }
+  printf '%s=%s\n' "${key^^}" "$value"
+done
+echo 'CERT_AVAILABLE=1'
+echo 'CERT_REASON=certification-present'
+REMOTE_CERT_STATUS
+)"
+  printf '%s\n' "$output" | tee "$PROOF_DIR/cert-status.txt"
+}
+
 vendor_status() {
   [[ -n "$PROOF_DIR" && -d "$PROOF_DIR" ]] || { echo "Proof directory missing." >&2; exit 1; }
   [[ -f "$PROOF_DIR/vendor-input.sha256" ]] || { echo "Vendor input fingerprint missing." >&2; exit 1; }
-  probe >/dev/null
 
   local vendor_input output
   vendor_input="$(cat "$PROOF_DIR/vendor-input.sha256")"
-  output="$("${SSH_BASE[@]}" "$REMOTE" "REMOTE_PATH=$remote_path_q CERT_DIR=$CERT_DIR EXPECTED_VENDOR_INPUT=$vendor_input bash -se" <<'REMOTE_STATUS'
+  output="$("${SSH_BASE[@]}" "$REMOTE" "CERT_DIR=$CERT_DIR EXPECTED_VENDOR_INPUT=$vendor_input bash -se" <<'REMOTE_STATUS'
 set -Eeuo pipefail
 cert="$HOME/$CERT_DIR"
 if [[ ! -f "$cert/current.env" || ! -f "$cert/vendor-sha256sums.txt" ]]; then
@@ -148,14 +176,8 @@ fi
   echo 'VENDOR_REASON=incomplete-vendor-certification'
   exit 0
 }
-cd "$REMOTE_PATH"
-if ! sha256sum -c "$cert/vendor-sha256sums.txt" --quiet; then
-  echo 'VENDOR_FAST_PATH=0'
-  echo 'VENDOR_REASON=remote-vendor-verification-failed'
-  exit 0
-fi
 echo 'VENDOR_FAST_PATH=1'
-printf 'VENDOR_REASON=certified-vendor-verified\n'
+echo 'VENDOR_REASON=certified-vendor-continuity'
 printf 'VENDOR_MANIFEST_SHA256=%s\n' "$vendor_manifest_sha256"
 printf 'VENDOR_FILE_COUNT=%s\n' "$vendor_file_count"
 printf 'VENDOR_BYTES=%s\n' "$vendor_bytes"
@@ -171,7 +193,6 @@ run_rsync() {
   [[ -n "$PAYLOAD_DIR" && -d "$PAYLOAD_DIR" ]] || { echo "Payload directory missing." >&2; exit 1; }
   [[ -n "$PROOF_DIR" && -d "$PROOF_DIR" ]] || { echo "Proof directory missing." >&2; exit 1; }
 
-  probe >/dev/null
   local wrapper output_file start_ms end_ms duration_ms
   local payload_count transfer_count transfer_bytes unchanged_count vendor_transfer_count vendor_transfer_bytes
   local payload_identity root_ht assets_ht database_ht vendor_mode
@@ -200,6 +221,10 @@ run_rsync() {
   if [[ "$dry_flag" == "dry" ]]; then
     args+=(--dry-run)
   fi
+  if [[ -n "${RSYNC_FILE_LIST:-}" ]]; then
+    [[ -f "$RSYNC_FILE_LIST" ]] || { echo "Configured rsync file list missing: $RSYNC_FILE_LIST" >&2; exit 1; }
+    args+=(--files-from="$RSYNC_FILE_LIST")
+  fi
   rsync "${args[@]}" "$PAYLOAD_DIR/" "$REMOTE:$remote_path/" | tee "$output_file"
   end_ms="$(date +%s%3N)"
   duration_ms=$((end_ms - start_ms))
@@ -209,7 +234,11 @@ run_rsync() {
     exit 1
   fi
 
-  payload_count="$(find "$PAYLOAD_DIR" -type f | wc -l | tr -d ' ')"
+  if [[ -n "${RSYNC_FILE_LIST:-}" ]]; then
+    payload_count="$(grep -cve '^$' "$RSYNC_FILE_LIST" || true)"
+  else
+    payload_count="$(find "$PAYLOAD_DIR" -type f | wc -l | tr -d ' ')"
+  fi
   transfer_count="$(awk -F '|' '$1 ~ /^>f/ {n += 1} END {print n + 0}' "$output_file")"
   transfer_bytes="$(awk -F '|' '$1 ~ /^>f/ {b += $2} END {printf "%.0f", b + 0}' "$output_file")"
   unchanged_count=$((payload_count - transfer_count))
@@ -291,21 +320,30 @@ verify_and_certify() {
     "set -Eeuo pipefail; cd $remote_path_q; manifest=\$(mktemp); trap 'rm -f \"\$manifest\"' EXIT; cat > \"\$manifest\"; sha256sum -c \"\$manifest\" --quiet"
   app_verify_end="$(date +%s%3N)"
 
-  # Verify vendor bytes. Full mode uses the just-built local vendor manifest;
-  # fast mode reuses the previously certified vendor manifest stored outside webroot.
+  # Full mode re-verifies vendor bytes. App-only mode intentionally reuses the
+  # previously certified vendor identity after Git/vendor-input continuity proof;
+  # it does not re-hash tens of thousands of unchanged vendor files on every run.
   vendor_verify_start="$(date +%s%3N)"
   if [[ "$vendor_mode" == "full" ]]; then
     [[ -f "$PROOF_DIR/vendor-sha256sums.txt" ]] || { echo "Full vendor verification manifest missing." >&2; exit 1; }
     cat "$PROOF_DIR/vendor-sha256sums.txt" | "${SSH_BASE[@]}" "$REMOTE" \
       "set -Eeuo pipefail; cd $remote_path_q; manifest=\$(mktemp); trap 'rm -f \"\$manifest\"' EXIT; cat > \"\$manifest\"; sha256sum -c \"\$manifest\" --quiet"
+    vendor_verification_result='pass/full-byte-verification'
   else
-    "${SSH_BASE[@]}" "$REMOTE" "REMOTE_PATH=$remote_path_q CERT_DIR=$cert bash -se" <<'REMOTE_VERIFY'
+    local expected_vendor_input expected_vendor_manifest continuity
+    expected_vendor_input="$(cat "$PROOF_DIR/vendor-input.sha256")"
+    expected_vendor_manifest="$(cat "$PROOF_DIR/vendor-manifest.sha256")"
+    continuity="$("${SSH_BASE[@]}" "$REMOTE" "CERT_DIR=$cert EXPECTED_VENDOR_INPUT=$expected_vendor_input EXPECTED_VENDOR_MANIFEST=$expected_vendor_manifest bash -se" <<'REMOTE_VERIFY'
 set -Eeuo pipefail
 cert="$HOME/$CERT_DIR"
-[[ -f "$cert/vendor-sha256sums.txt" ]]
-cd "$REMOTE_PATH"
-sha256sum -c "$cert/vendor-sha256sums.txt" --quiet
+[[ -f "$cert/current.env" && -f "$cert/vendor-sha256sums.txt" ]]
+grep -Fx "vendor_input_sha256=$EXPECTED_VENDOR_INPUT" "$cert/current.env" >/dev/null
+grep -Fx "vendor_manifest_sha256=$EXPECTED_VENDOR_MANIFEST" "$cert/current.env" >/dev/null
+echo PASS
 REMOTE_VERIFY
+)"
+    [[ "$continuity" == 'PASS' ]] || { echo "Certified vendor continuity proof failed." >&2; exit 1; }
+    vendor_verification_result='reused-certified-baseline/no-rehash'
   fi
   vendor_verify_end="$(date +%s%3N)"
 
@@ -362,7 +400,7 @@ REMOTE_CERT
   cat > "$PROOF_DIR/d2-2-verification-summary.txt" <<SUMMARY
 application_verification=pass
 application_verification_duration_ms=$((app_verify_end - app_verify_start))
-vendor_verification=pass
+vendor_verification=$vendor_verification_result
 vendor_verification_duration_ms=$((vendor_verify_end - vendor_verify_start))
 certification_advanced=pass
 certified_git_commit=$MAIN_COMMIT
@@ -376,7 +414,7 @@ SUMMARY
 ## D2-2 — Remote verification and deployment certification
 
 - Governed application payload verification: **PASS** ($((app_verify_end - app_verify_start)) ms)
-- Vendor verification: **PASS** ($((vendor_verify_end - vendor_verify_start)) ms)
+- Vendor verification: **$vendor_verification_result** ($((vendor_verify_end - vendor_verify_start)) ms)
 - Vendor mode: **$vendor_mode**
 - Certified main commit: \`$MAIN_COMMIT\`
 - Certified payload identity: \`$payload_identity\`
@@ -391,6 +429,9 @@ SUMMARY
 case "$MODE" in
   probe)
     probe
+    ;;
+  cert-status)
+    cert_status
     ;;
   vendor-status)
     vendor_status
