@@ -1,4 +1,4 @@
-name: FitCrew Deployment v2 Fast Delta Proof + Non-Deleting Deploy
+name: FitCrew Deployment v2 Certified Delta + Manifest-Owned Deletion Proof
 
 on:
   push:
@@ -10,15 +10,21 @@ on:
   workflow_dispatch:
     inputs:
       phase:
-        description: 'Run proof only, or authorized D2-2 non-deleting production deployment'
+        description: 'Proof, D2-2 non-deleting deploy, D2-3 deletion dry run, or D2-4 exact manifest-owned deletion'
         required: true
         default: 'proof'
         type: choice
         options:
           - proof
           - d2-2
+          - d2-3
+          - d2-4
       confirmation:
-        description: 'For d2-2 only, enter DEPLOY-NON-DELETING'
+        description: 'For d2-2: DEPLOY-NON-DELETING. For d2-4: DELETE-MANIFEST-OWNED.'
+        required: false
+        type: string
+      deletion_plan_sha256:
+        description: 'For d2-4 only: exact plan-identity SHA-256 returned by the prior clean D2-3 run'
         required: false
         type: string
 
@@ -26,12 +32,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2' && 'fitcrew-production' || 'fitcrew-deployment-v2-proof' }}
+  group: ${{ github.event_name == 'workflow_dispatch' && (inputs.phase == 'd2-2' || inputs.phase == 'd2-4') && 'fitcrew-production' || 'fitcrew-deployment-v2-proof' }}
   cancel-in-progress: false
 
 jobs:
   prove:
-    name: Prove certified delta and deploy only required application files
+    name: Prove certified delta, exact transfer, and manifest-owned deletion
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -86,6 +92,36 @@ jobs:
             exit 1
           }
           echo 'D2-2 operator confirmation: **PASS / NON-DELETING ONLY**' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Authorize D2-3 invocation
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-3' }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "${{ github.ref_name }}" == "develop" ]] || {
+            echo "D2-3 proof implementation must run from develop." >&2
+            exit 1
+          }
+          echo 'D2-3 operator invocation: **PASS / DRY RUN ONLY**' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Authorize D2-4 invocation
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-4' }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "${{ github.ref_name }}" == "develop" ]] || {
+            echo "D2-4 proof implementation must run from develop." >&2
+            exit 1
+          }
+          [[ "${{ inputs.confirmation }}" == "DELETE-MANIFEST-OWNED" ]] || {
+            echo "D2-4 confirmation phrase did not match." >&2
+            exit 1
+          }
+          [[ "${{ inputs.deletion_plan_sha256 }}" =~ ^[0-9a-f]{64}$ ]] || {
+            echo "D2-4 requires the exact 64-character SHA-256 returned by the prior D2-3 proof." >&2
+            exit 1
+          }
+          echo 'D2-4 operator confirmation: **PASS / EXACT MANIFEST-OWNED DELETION ONLY**' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install runner SSH password helper
         shell: bash
@@ -151,12 +187,15 @@ jobs:
             echo 'changed_total=unknown' >> "$GITHUB_OUTPUT"
             echo 'production_changed=unknown' >> "$GITHUB_OUTPUT"
             echo 'production_deleted=unknown' >> "$GITHUB_OUTPUT"
+            echo 'vendor_sensitive=1' >> "$GITHUB_OUTPUT"
+            echo 'vendor_reason=uncertified-full-fallback' >> "$GITHUB_OUTPUT"
             {
               echo
               echo '## Certified delta classification'
               echo
               echo '- Existing deployment certification: **UNAVAILABLE**'
               echo '- Fast delta chain: **UNAVAILABLE / FULL FALLBACK REQUIRED**'
+              echo '- Vendor path: **FULL COMPOSER BUILD REQUIRED / UNCERTIFIED BASELINE**'
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
@@ -179,6 +218,8 @@ jobs:
             echo 'changed_total=0' >> "$GITHUB_OUTPUT"
             echo 'production_changed=0' >> "$GITHUB_OUTPUT"
             echo 'production_deleted=0' >> "$GITHUB_OUTPUT"
+            echo 'vendor_sensitive=0' >> "$GITHUB_OUTPUT"
+            echo 'vendor_reason=no-git-delta' >> "$GITHUB_OUTPUT"
             {
               echo
               echo '## Certified delta classification'
@@ -191,7 +232,7 @@ jobs:
           fi
 
           python3 - "$CERTIFIED_COMMIT" "$MAIN_COMMIT" "$GITHUB_WORKSPACE/production-source" "$proof_dir" <<'PY'
-          import os, subprocess, sys
+          import re, subprocess, sys
           from pathlib import Path
 
           base, target, repo, proof = sys.argv[1:]
@@ -216,6 +257,31 @@ jobs:
                   return False
               return True
 
+          # Current FitCrew Composer contract:
+          #   autoload.psr-4: FitCrew\\ => inc/
+          #   composer install --optimize-autoloader
+          # Therefore Composer output changes for root-package source only when the
+          # optimized class inventory/path mapping changes. Ordinary method/body
+          # edits in an existing inc/*.php file do not require Composer.
+          namespace_re = re.compile(r'(?m)^\s*namespace\s+([A-Za-z_\\][A-Za-z0-9_\\]*)\s*[;{]')
+          class_re = re.compile(r'(?m)^\s*(?:(?:abstract|final|readonly)\s+)*(class|interface|trait|enum)\s+([A-Za-z_][A-Za-z0-9_]*)\b')
+
+          def git_bytes(commit: str, path: str) -> bytes:
+              return subprocess.check_output(['git', '-C', str(repo), 'show', f'{commit}:{path}'])
+
+          def class_inventory(commit: str, path: str):
+              try:
+                  text = git_bytes(commit, path).decode('utf-8', 'replace')
+              except subprocess.CalledProcessError:
+                  return ()
+              namespaces = namespace_re.findall(text)
+              namespace = namespaces[0].rstrip('\\') if namespaces else ''
+              symbols = []
+              for kind, name in class_re.findall(text):
+                  fqcn = f'{namespace}\\{name}' if namespace else name
+                  symbols.append((kind, fqcn))
+              return tuple(sorted(symbols))
+
           raw = subprocess.check_output(
               ['git', '-C', str(repo), 'diff', '--name-status', '-M', '-z', base, target]
           )
@@ -224,7 +290,23 @@ jobs:
           records = []
           changed_target = set()
           deleted = set()
+          vendor_reasons = set()
           total = 0
+
+          def note_vendor_change(code: str, old: str, new: str = '') -> None:
+              paths = [p for p in (old, new) if p]
+              if any(p in ('composer.json', 'composer.lock') for p in paths):
+                  vendor_reasons.add('composer-metadata-changed')
+                  return
+              inc_php = [p for p in paths if p.startswith('inc/') and p.endswith('.php')]
+              if not inc_php:
+                  return
+              if code in ('A', 'D', 'R', 'C'):
+                  vendor_reasons.add('optimized-psr4-class-path-set-changed')
+                  return
+              if code == 'M' and old == new:
+                  if class_inventory(base, old) != class_inventory(target, new):
+                      vendor_reasons.add('optimized-psr4-class-inventory-changed')
 
           while i < len(items) and items[i]:
               status = items[i].decode('utf-8', 'surrogateescape')
@@ -235,6 +317,7 @@ jobs:
                   old = items[i].decode('utf-8', 'surrogateescape'); i += 1
                   new = items[i].decode('utf-8', 'surrogateescape'); i += 1
                   records.append((status, old, new))
+                  note_vendor_change(code, old, new)
                   if code == 'R' and production_path(old):
                       deleted.add(old)
                   if production_path(new) and (repo / new).is_file():
@@ -242,6 +325,7 @@ jobs:
               else:
                   path = items[i].decode('utf-8', 'surrogateescape'); i += 1
                   records.append((status, path, ''))
+                  note_vendor_change(code, path, path)
                   if code == 'D':
                       if production_path(path):
                           deleted.add(path)
@@ -257,21 +341,28 @@ jobs:
           (proof / 'deleted-production-files.txt').write_text(
               ''.join(p + '\n' for p in sorted(deleted)), encoding='utf-8'
           )
+          reason = ','.join(sorted(vendor_reasons)) if vendor_reasons else 'composer-output-inputs-unchanged'
           (proof / 'delta-counts.env').write_text(
               f'changed_total={total}\n'
               f'production_changed={len(changed_target)}\n'
-              f'production_deleted={len(deleted)}\n', encoding='utf-8'
+              f'production_deleted={len(deleted)}\n'
+              f'vendor_sensitive={1 if vendor_reasons else 0}\n'
+              f'vendor_reason={reason}\n', encoding='utf-8'
           )
           PY
 
           changed_total="$(sed -n 's/^changed_total=//p' "$proof_dir/delta-counts.env")"
           production_changed="$(sed -n 's/^production_changed=//p' "$proof_dir/delta-counts.env")"
           production_deleted="$(sed -n 's/^production_deleted=//p' "$proof_dir/delta-counts.env")"
+          vendor_sensitive="$(sed -n 's/^vendor_sensitive=//p' "$proof_dir/delta-counts.env")"
+          vendor_reason="$(sed -n 's/^vendor_reason=//p' "$proof_dir/delta-counts.env")"
           echo 'noop=0' >> "$GITHUB_OUTPUT"
           echo 'certified_chain=1' >> "$GITHUB_OUTPUT"
           echo "changed_total=$changed_total" >> "$GITHUB_OUTPUT"
           echo "production_changed=$production_changed" >> "$GITHUB_OUTPUT"
           echo "production_deleted=$production_deleted" >> "$GITHUB_OUTPUT"
+          echo "vendor_sensitive=$vendor_sensitive" >> "$GITHUB_OUTPUT"
+          echo "vendor_reason=$vendor_reason" >> "$GITHUB_OUTPUT"
 
           {
             echo
@@ -280,9 +371,12 @@ jobs:
             printf -- '- Certified production commit: `%s`\n' "$CERTIFIED_COMMIT"
             printf -- '- Target main commit: `%s`\n' "$MAIN_COMMIT"
             printf -- '- Git change records: `%s`\n' "$changed_total"
-            printf -- '- Existing production files requiring upload consideration: `%s`\n' "$production_changed"
-            printf -- '- Deleted production paths recorded / NOT deleted: `%s`\n' "$production_deleted"
+            printf -- '- Production additions/modifications requiring upload consideration: `%s`\n' "$production_changed"
+            printf -- '- Production removals requiring manifest-ownership classification: `%s`\n' "$production_deleted"
             echo '- Certified commit ancestry: **PASS**'
+            printf -- '- Composer/vendor sensitivity: `%s` / `%s`\n' "$vendor_sensitive" "$vendor_reason"
+            echo '- Current FitCrew optimized PSR-4 source root: `inc/`'
+            echo '- Ordinary `inc/*.php` body edits with unchanged declared class inventory: **NOT vendor-sensitive**'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Stop early when current main is already certified
@@ -292,52 +386,60 @@ jobs:
           set -Eeuo pipefail
           echo 'Current main already equals the certified production commit. No payload construction, Composer, rsync, or remote hashing is required.'
 
-      - name: Fingerprint vendor-sensitive inputs
+      - name: Determine certified vendor reuse from exact Git classification
         if: ${{ steps.delta.outputs.noop != '1' }}
+        id: vendor_status
+        shell: bash
+        env:
+          CERTIFIED_CHAIN: ${{ steps.delta.outputs.certified_chain }}
+          VENDOR_SENSITIVE: ${{ steps.delta.outputs.vendor_sensitive }}
+          CERT_VENDOR_INPUT: ${{ steps.cert_status.outputs.vendor_input }}
+          CERT_VENDOR_MANIFEST: ${{ steps.cert_status.outputs.vendor_manifest }}
+          CERT_VENDOR_COUNT: ${{ steps.cert_status.outputs.vendor_count }}
+          CERT_VENDOR_BYTES: ${{ steps.cert_status.outputs.vendor_bytes }}
+        run: |
+          set -Eeuo pipefail
+          proof_dir="$RUNNER_TEMP/fitcrew-deployment-proof"
+          if [[ "$CERTIFIED_CHAIN" == '1' && "$VENDOR_SENSITIVE" == '0' ]]; then
+            [[ "$CERT_VENDOR_INPUT" =~ ^[0-9a-f]{64}$ ]]
+            [[ "$CERT_VENDOR_MANIFEST" =~ ^[0-9a-f]{64}$ ]]
+            printf '%s\n' "$CERT_VENDOR_INPUT" > "$proof_dir/vendor-input.sha256"
+            echo 'fast=1' >> "$GITHUB_OUTPUT"
+            echo 'reason=exact-git-classification-proves-composer-output-unchanged' >> "$GITHUB_OUTPUT"
+            echo "vendor_sha=$CERT_VENDOR_MANIFEST" >> "$GITHUB_OUTPUT"
+            echo "vendor_count=${CERT_VENDOR_COUNT:-0}" >> "$GITHUB_OUTPUT"
+            echo "vendor_bytes=${CERT_VENDOR_BYTES:-0}" >> "$GITHUB_OUTPUT"
+            {
+              echo
+              echo '## Vendor decision'
+              echo
+              echo '- Composer/vendor rebuild in CI: **SKIPPED**'
+              echo '- Reason: **exact Git classification proves Composer-generated output inputs unchanged**'
+              echo '- Certified vendor byte re-hash: **SKIPPED / CERTIFIED CONTINUITY REUSED**'
+              printf -- '- Certified vendor manifest SHA-256: `%s`\n' "$CERT_VENDOR_MANIFEST"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'fast=0' >> "$GITHUB_OUTPUT"
+            echo 'reason=vendor-sensitive-or-uncertified' >> "$GITHUB_OUTPUT"
+            echo 'vendor_sha=' >> "$GITHUB_OUTPUT"
+            echo 'vendor_count=0' >> "$GITHUB_OUTPUT"
+            echo 'vendor_bytes=0' >> "$GITHUB_OUTPUT"
+            {
+              echo
+              echo '## Vendor decision'
+              echo
+              printf -- '- Composer/vendor rebuild in CI: **REQUIRED** / `%s`\n' '${{ steps.delta.outputs.vendor_reason }}'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Fingerprint Composer build inputs only when vendor rebuild is required
+        if: ${{ steps.delta.outputs.noop != '1' && steps.vendor_status.outputs.fast != '1' }}
         shell: bash
         run: |
           set -Eeuo pipefail
           proof-repo/.github/deployment/build-production-payload.sh fingerprint \
             "$GITHUB_WORKSPACE/production-source" \
             "$RUNNER_TEMP/fitcrew-deployment-proof"
-
-      - name: Check certified vendor continuity without re-hashing vendor
-        if: ${{ steps.delta.outputs.noop != '1' }}
-        id: vendor_status
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          proof-repo/.github/deployment/deploy-v2-proof.sh vendor-status \
-            "" \
-            "$RUNNER_TEMP/fitcrew-deployment-proof"
-
-          fast="$(sed -n 's/^VENDOR_FAST_PATH=//p' "$RUNNER_TEMP/fitcrew-deployment-proof/vendor-status.txt")"
-          reason="$(sed -n 's/^VENDOR_REASON=//p' "$RUNNER_TEMP/fitcrew-deployment-proof/vendor-status.txt")"
-          vendor_sha="$(sed -n 's/^VENDOR_MANIFEST_SHA256=//p' "$RUNNER_TEMP/fitcrew-deployment-proof/vendor-status.txt")"
-          vendor_count="$(sed -n 's/^VENDOR_FILE_COUNT=//p' "$RUNNER_TEMP/fitcrew-deployment-proof/vendor-status.txt")"
-          vendor_bytes="$(sed -n 's/^VENDOR_BYTES=//p' "$RUNNER_TEMP/fitcrew-deployment-proof/vendor-status.txt")"
-
-          [[ "$fast" == "0" || "$fast" == "1" ]]
-          echo "fast=$fast" >> "$GITHUB_OUTPUT"
-          echo "reason=$reason" >> "$GITHUB_OUTPUT"
-          echo "vendor_sha=$vendor_sha" >> "$GITHUB_OUTPUT"
-          echo "vendor_count=${vendor_count:-0}" >> "$GITHUB_OUTPUT"
-          echo "vendor_bytes=${vendor_bytes:-0}" >> "$GITHUB_OUTPUT"
-
-          {
-            echo
-            echo '## Vendor decision'
-            echo
-            if [[ "$fast" == "1" ]]; then
-              echo '- Vendor-sensitive inputs: **UNCHANGED FROM CERTIFIED BASELINE**'
-              echo '- Remote vendor byte re-hash: **SKIPPED**'
-              echo '- Composer/vendor rebuild in CI: **SKIPPED**'
-              printf -- '- Certified vendor manifest SHA-256: `%s`\n' "$vendor_sha"
-            else
-              printf -- '- Fast vendor reuse: **UNAVAILABLE** / `%s`\n' "$reason"
-              echo '- Composer/vendor rebuild in CI: **REQUIRED**'
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Setup PHP and Composer only when vendor inputs changed
         if: ${{ steps.delta.outputs.noop != '1' && steps.vendor_status.outputs.fast != '1' }}
@@ -409,12 +511,97 @@ jobs:
             "$RUNNER_TEMP/fitcrew-production-payload" \
             "$RUNNER_TEMP/fitcrew-deployment-proof"
 
-      - name: D2-2 — non-deleting Git-diff-scoped production deployment
+      - name: D2-2 — build read-only retirement plan when the target may obsolete owned files
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2' && steps.delta.outputs.noop != '1' && steps.delta.outputs.certified_chain == '1' && (steps.delta.outputs.production_deleted != '0' || steps.vendor_status.outputs.fast != '1') }}
+        shell: bash
+        env:
+          CERTIFIED_COMMIT: ${{ steps.cert_status.outputs.certified_commit }}
+          MAIN_COMMIT: ${{ steps.main_source.outputs.commit }}
+          PLAN_PHASE_LABEL: D2-2 safety check
+        run: |
+          set -Eeuo pipefail
+          proof-repo/.github/deployment/deploy-v2-proof.sh manifest-delete-plan \
+            "$RUNNER_TEMP/fitcrew-production-payload" \
+            "$RUNNER_TEMP/fitcrew-deployment-proof"
+
+      - name: Prevent D2-2 certification from crossing manifest-owned removals
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2' && steps.delta.outputs.noop != '1' }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          plan="$RUNNER_TEMP/fitcrew-deployment-proof/d2-3-delete-plan.tsv"
+          if [[ -f "$plan" ]]; then
+            count="$(grep -cve '^$' "$plan" || true)"
+            [[ "$count" == '0' ]] || {
+              echo "D2-2 is intentionally non-deleting and found $count obsolete Deployment-owned path(s)." >&2
+              echo 'Run D2-3, review the exact manifest-owned delete plan, then D2-4.' >&2
+              exit 1
+            }
+          elif [[ '${{ steps.delta.outputs.production_deleted }}' != '0' ]]; then
+            echo 'Git reports production removals but no manifest retirement proof was created; refusing certification.' >&2
+            exit 1
+          fi
+
+      - name: D2-3 — calculate exact manifest-owned deletion plan / NO DELETE
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.phase == 'd2-3' || inputs.phase == 'd2-4') && steps.delta.outputs.noop != '1' }}
+        shell: bash
+        env:
+          CERTIFIED_COMMIT: ${{ steps.cert_status.outputs.certified_commit }}
+          MAIN_COMMIT: ${{ steps.main_source.outputs.commit }}
+          PLAN_PHASE_LABEL: D2-3
+        run: |
+          set -Eeuo pipefail
+          proof-repo/.github/deployment/deploy-v2-proof.sh manifest-delete-plan \
+            "$RUNNER_TEMP/fitcrew-production-payload" \
+            "$RUNNER_TEMP/fitcrew-deployment-proof"
+
+      - name: D2-3 — prove zero deletion plan when target main is already certified
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-3' && steps.delta.outputs.noop == '1' }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          proof_dir="$RUNNER_TEMP/fitcrew-deployment-proof"
+          : > "$proof_dir/d2-3-delete-plan.tsv"
+          : > "$proof_dir/d2-3-delete-candidates.txt"
+          tsv_sha="$(sha256sum "$proof_dir/d2-3-delete-plan.tsv" | awk '{print $1}')"
+          commit='${{ steps.main_source.outputs.commit }}'
+          identity="$(printf 'fitcrew-manifest-delete-plan-v1\ncertified_commit=%s\ntarget_main=%s\ndelete_plan_tsv_sha256=%s\n' \
+            "$commit" "$commit" "$tsv_sha" | sha256sum | awk '{print $1}')"
+          printf '%s\n' "$identity" > "$proof_dir/d2-3-delete-plan-identity.sha256"
+          {
+            echo
+            echo '## D2-3 — Deployment-owned manifest deletion dry run'
+            echo
+            echo '- Certified commit equals target main: **PASS**'
+            echo '- Candidate obsolete files: `0`'
+            printf -- '- Exact delete-plan TSV SHA-256: `%s`\n' "$tsv_sha"
+            printf -- '- Commit-bound delete-plan identity SHA-256: `%s`\n' "$identity"
+            echo '- Production-root tree scan: **NOT PERFORMED**'
+            echo '- Production deletion: **NONE / DRY RUN**'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Require non-empty D2-4 manifest-owned deletion proof
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-4' }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ '${{ steps.delta.outputs.noop }}' != '1' ]] || {
+            echo 'D2-4 requires a nonzero target delta containing at least one obsolete Deployment-owned path.' >&2
+            exit 1
+          }
+          count="$(grep -cve '^$' "$RUNNER_TEMP/fitcrew-deployment-proof/d2-3-delete-plan.tsv" || true)"
+          [[ "$count" -gt 0 ]] || {
+            echo 'D2-4 requires at least one manifest-owned deletion candidate.' >&2
+            exit 1
+          }
+
+      - name: D2-2/D2-4 — Git-diff-scoped production transfer / no broad delete
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.phase == 'd2-2' || inputs.phase == 'd2-4') && steps.delta.outputs.noop != '1' }}
         shell: bash
         env:
           MAIN_COMMIT: ${{ steps.main_source.outputs.commit }}
           VENDOR_FAST: ${{ steps.vendor_status.outputs.fast }}
+          DEPLOY_PHASE_LABEL: ${{ inputs.phase == 'd2-4' && 'D2-4' || 'D2-2' }}
         run: |
           set -Eeuo pipefail
           if [[ "$VENDOR_FAST" == '1' && '${{ steps.delta.outputs.certified_chain }}' == '1' ]]; then
@@ -424,19 +611,31 @@ jobs:
             "$RUNNER_TEMP/fitcrew-production-payload" \
             "$RUNNER_TEMP/fitcrew-deployment-proof"
 
-      - name: D2-2 — verify application and advance certification
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2' && steps.delta.outputs.noop != '1' }}
+      - name: D2-4 — remove only exact manifest-owned obsolete files
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-4' && steps.delta.outputs.noop != '1' }}
+        shell: bash
+        env:
+          EXPECTED_DELETE_PLAN_SHA256: ${{ inputs.deletion_plan_sha256 }}
+        run: |
+          set -Eeuo pipefail
+          proof-repo/.github/deployment/deploy-v2-proof.sh manifest-delete-apply \
+            "$RUNNER_TEMP/fitcrew-production-payload" \
+            "$RUNNER_TEMP/fitcrew-deployment-proof"
+
+      - name: D2-2/D2-4 — verify target payload and advance certification
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.phase == 'd2-2' || inputs.phase == 'd2-4') && steps.delta.outputs.noop != '1' }}
         shell: bash
         env:
           MAIN_COMMIT: ${{ steps.main_source.outputs.commit }}
+          CERTIFY_PHASE_LABEL: ${{ inputs.phase == 'd2-4' && 'D2-4' || 'D2-2' }}
         run: |
           set -Eeuo pipefail
           proof-repo/.github/deployment/deploy-v2-proof.sh verify-certify \
             "$RUNNER_TEMP/fitcrew-production-payload" \
             "$RUNNER_TEMP/fitcrew-deployment-proof"
 
-      - name: D2-2 — production HTTP and security smoke
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2' }}
+      - name: D2-2/D2-4 — production HTTP and security smoke
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.phase == 'd2-2' || inputs.phase == 'd2-4') }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -457,7 +656,7 @@ jobs:
           done
           {
             echo
-            echo '## D2-2 — HTTP/security smoke'
+            printf '## %s — HTTP/security smoke\n' '${{ inputs.phase == 'd2-4' && 'D2-4' || 'D2-2' }}'
             echo
             echo '- Production root HTTP 200: **PASS**'
             echo '- `.env` HTTP exposure: **BLOCKED**'
@@ -465,8 +664,8 @@ jobs:
             echo '- Deployment certification metadata HTTP exposure: **BLOCKED / OUTSIDE WEB ROOT**'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Preserve proof package only for D2-2 or failures
-        if: ${{ failure() || (github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2') }}
+      - name: Preserve proof package for deletion proofs, deployments, or failures
+        if: ${{ failure() || (github.event_name == 'workflow_dispatch' && (inputs.phase == 'd2-2' || inputs.phase == 'd2-3' || inputs.phase == 'd2-4')) }}
         uses: actions/upload-artifact@v4
         with:
           name: fitcrew-deployment-v2-proof-${{ github.run_id }}

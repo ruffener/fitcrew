@@ -49,9 +49,12 @@ fingerprint_vendor_inputs() {
   [[ -f "$source_root/composer.lock" ]] || { echo "composer.lock missing" >&2; exit 1; }
   command -v python3 >/dev/null 2>&1 || { echo "python3 required for Composer autoload-path inspection" >&2; exit 1; }
 
-  # Derive root-package autoload inputs from composer.json without running Composer.
-  # Any composer.json/composer.lock change or change beneath a declared autoload
-  # path forces a full Composer/vendor rebuild.
+  # This fingerprint binds a FULL Composer rebuild to the exact root-package
+  # Composer metadata and declared autoload source tree.  Routine rebuild
+  # necessity is decided earlier from the certified Git delta: composer.json,
+  # composer.lock, or a change to the optimized PSR-4 class inventory/path map.
+  # Ordinary PHP method/body edits with unchanged class inventory do not reach
+  # this full-build fingerprint path.
   mapfile -t autoload_paths < <(python3 - "$source_root/composer.json" <<'PYJSON'
 import json, sys
 from pathlib import Path

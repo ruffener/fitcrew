@@ -131,6 +131,13 @@ if [[ ! -f "$cert/current.env" ]]; then
   echo 'CERT_REASON=no-deployment-certification'
   exit 0
 fi
+for required in application-manifest.tsv vendor-manifest.tsv vendor-sha256sums.txt; do
+  if [[ ! -f "$cert/$required" ]]; then
+    echo 'CERT_AVAILABLE=0'
+    echo 'CERT_REASON=incomplete-deployment-ownership-manifest'
+    exit 0
+  fi
+done
 for key in git_commit payload_identity_sha256 application_manifest_sha256 vendor_input_sha256 vendor_manifest_sha256 vendor_file_count vendor_bytes; do
   value="$(sed -n "s/^${key}=//p" "$cert/current.env")"
   [[ -n "$value" ]] || {
@@ -260,7 +267,7 @@ run_rsync() {
   database_ht="$(item_status 'database/.htaccess')"
 
   local phase
-  if [[ "$dry_flag" == "dry" ]]; then phase='D2-1'; else phase='D2-2'; fi
+  if [[ "$dry_flag" == "dry" ]]; then phase='D2-1'; else phase="${DEPLOY_PHASE_LABEL:-D2-2}"; fi
   cat > "$PROOF_DIR/${phase,,}-rsync-summary.txt" <<SUMMARY
 payload_files_in_rsync_scope=$payload_count
 candidate_transfer_file_count=$transfer_count
@@ -299,6 +306,329 @@ SUMMARY
 | database/.htaccess | $database_ht |
 | .env interaction | **NONE** |
 | Remote delete | **DISABLED** |
+SUMMARY
+  fi
+}
+
+manifest_delete_plan() {
+  [[ -n "$PROOF_DIR" && -d "$PROOF_DIR" ]] || { echo "Proof directory missing." >&2; exit 1; }
+  [[ -f "$PROOF_DIR/application-manifest.tsv" ]] || { echo "New application ownership manifest missing." >&2; exit 1; }
+  [[ -f "$PROOF_DIR/payload-summary.txt" ]] || { echo "Payload summary missing." >&2; exit 1; }
+  [[ -n "${CERTIFIED_COMMIT:-}" && "$CERTIFIED_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "CERTIFIED_COMMIT missing or malformed for D2-3." >&2; exit 1; }
+  [[ -n "${MAIN_COMMIT:-}" && "$MAIN_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "MAIN_COMMIT missing or malformed for D2-3." >&2; exit 1; }
+
+  local cert="$CERT_DIR" vendor_mode
+  vendor_mode="$(sed -n 's/^vendor_mode=//p' "$PROOF_DIR/payload-summary.txt")"
+  [[ "$vendor_mode" == 'full' || "$vendor_mode" == 'app-only' ]] || {
+    echo "Unknown vendor mode for manifest deletion plan: $vendor_mode" >&2
+    exit 1
+  }
+
+  # Fetch only the previous Deployment-owned manifests.  This deliberately does
+  # not scan the production tree.  Remote-only/server-owned files never enter
+  # the deletion candidate set.
+  "${SSH_BASE[@]}" "$REMOTE" "set -Eeuo pipefail; cert=\"\$HOME/$cert\"; test -f \"\$cert/application-manifest.tsv\"; test -f \"\$cert/vendor-manifest.tsv\"; cat \"\$cert/application-manifest.tsv\"" \
+    > "$PROOF_DIR/previous-application-manifest.tsv"
+
+  if [[ "$vendor_mode" == 'full' ]]; then
+    [[ -f "$PROOF_DIR/vendor-manifest.tsv" ]] || { echo "New vendor ownership manifest missing for full vendor mode." >&2; exit 1; }
+    "${SSH_BASE[@]}" "$REMOTE" "set -Eeuo pipefail; cert=\"\$HOME/$cert\"; cat \"\$cert/vendor-manifest.tsv\"" \
+      > "$PROOF_DIR/previous-vendor-manifest.tsv"
+  fi
+
+  python3 - "$PROOF_DIR" "$vendor_mode" <<'PY_MANIFEST_PLAN'
+from __future__ import annotations
+import hashlib
+import re
+import sys
+from pathlib import Path, PurePosixPath
+
+proof = Path(sys.argv[1])
+vendor_mode = sys.argv[2]
+
+protected_exact = {
+    '.env',
+    '.git',
+    '.github',
+    '.well-known',
+    'storage/logs',
+    'storage/cache',
+    'storage/tmp',
+}
+protected_prefixes = (
+    '.env.',
+    '.git/',
+    '.github/',
+    '.well-known/',
+    'storage/logs/',
+    'storage/cache/',
+    'storage/tmp/',
+    '.fitcrew-deployment/',
+)
+hex64 = re.compile(r'^[0-9a-f]{64}$')
+
+def validate_path(path: str) -> None:
+    if not path or '\x00' in path or '\n' in path or '\r' in path or '\t' in path or '\\' in path:
+        raise SystemExit(f'Unsafe deployment-owned path encoding: {path!r}')
+    p = PurePosixPath(path)
+    if p.is_absolute() or path.startswith('/') or any(part in ('', '.', '..') for part in p.parts):
+        raise SystemExit(f'Unsafe deployment-owned relative path: {path!r}')
+
+def validate_candidate(path: str) -> None:
+    validate_path(path)
+    if path in protected_exact or path.startswith(protected_prefixes):
+        raise SystemExit(f'Protected server/runtime path cannot be a deletion candidate: {path}')
+
+def load_manifest(path: Path) -> dict[str, tuple[str, int]]:
+    result: dict[str, tuple[str, int]] = {}
+    for lineno, raw in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+        if not raw:
+            continue
+        parts = raw.split('\t')
+        if len(parts) != 3:
+            raise SystemExit(f'Malformed manifest line {path.name}:{lineno}')
+        digest, size_text, rel = parts
+        if not hex64.fullmatch(digest):
+            raise SystemExit(f'Invalid SHA-256 in {path.name}:{lineno}')
+        try:
+            size = int(size_text)
+        except ValueError:
+            raise SystemExit(f'Invalid byte count in {path.name}:{lineno}')
+        if size < 0:
+            raise SystemExit(f'Negative byte count in {path.name}:{lineno}')
+        validate_path(rel)
+        if rel in result:
+            raise SystemExit(f'Duplicate deployment-owned path in {path.name}: {rel}')
+        result[rel] = (digest, size)
+    return result
+
+old_app = load_manifest(proof / 'previous-application-manifest.tsv')
+new_app = load_manifest(proof / 'application-manifest.tsv')
+
+# Certified vendor continuity means old and new vendor ownership sets are
+# identical in app-only mode.  Only a full vendor rebuild can create a vendor
+# ownership delta, and that path has both old and new vendor manifests.
+old_vendor: dict[str, tuple[str, int]] = {}
+new_vendor: dict[str, tuple[str, int]] = {}
+if vendor_mode == 'full':
+    old_vendor = load_manifest(proof / 'previous-vendor-manifest.tsv')
+    new_vendor = load_manifest(proof / 'vendor-manifest.tsv')
+
+if set(old_app) & set(old_vendor):
+    raise SystemExit('Previous application/vendor ownership manifests overlap unexpectedly')
+if set(new_app) & set(new_vendor):
+    raise SystemExit('New application/vendor ownership manifests overlap unexpectedly')
+old_owned = dict(old_app)
+old_owned.update(old_vendor)
+new_owned = dict(new_app)
+new_owned.update(new_vendor)
+
+candidates = sorted(set(old_owned) - set(new_owned))
+plan_lines = []
+for rel in candidates:
+    digest, size = old_owned[rel]
+    validate_candidate(rel)
+    if rel in new_owned:
+        raise SystemExit(f'Internal set-difference error; target still owns {rel}')
+    plan_lines.append(f'{digest}\t{size}\t{rel}\n')
+
+plan = proof / 'd2-3-delete-plan.tsv'
+plan.write_text(''.join(plan_lines), encoding='utf-8')
+(proof / 'd2-3-delete-candidates.txt').write_text(
+    ''.join(rel + '\n' for rel in candidates), encoding='utf-8'
+)
+sha = hashlib.sha256(plan.read_bytes()).hexdigest()
+(proof / 'd2-3-delete-plan.tsv.sha256').write_text(sha + '\n', encoding='ascii')
+bytes_total = sum(old_owned[rel][1] for rel in candidates)
+(proof / 'd2-3-delete-plan-summary.env').write_text(
+    f'candidate_count={len(candidates)}\n'
+    f'candidate_bytes={bytes_total}\n'
+    f'delete_plan_tsv_sha256={sha}\n'
+    f'vendor_mode={vendor_mode}\n', encoding='utf-8'
+)
+PY_MANIFEST_PLAN
+
+  local candidate_count candidate_bytes plan_tsv_sha plan_identity
+  candidate_count="$(sed -n 's/^candidate_count=//p' "$PROOF_DIR/d2-3-delete-plan-summary.env")"
+  candidate_bytes="$(sed -n 's/^candidate_bytes=//p' "$PROOF_DIR/d2-3-delete-plan-summary.env")"
+  plan_tsv_sha="$(sed -n 's/^delete_plan_tsv_sha256=//p' "$PROOF_DIR/d2-3-delete-plan-summary.env")"
+  plan_identity="$(printf 'fitcrew-manifest-delete-plan-v1\ncertified_commit=%s\ntarget_main=%s\ndelete_plan_tsv_sha256=%s\n' \
+    "$CERTIFIED_COMMIT" "$MAIN_COMMIT" "$plan_tsv_sha" | sha256sum | awk '{print $1}')"
+  printf '%s\n' "$plan_identity" > "$PROOF_DIR/d2-3-delete-plan-identity.sha256"
+  cat > "$PROOF_DIR/d2-3-delete-plan-identity.env" <<IDENTITY
+certified_commit=$CERTIFIED_COMMIT
+target_main=$MAIN_COMMIT
+delete_plan_tsv_sha256=$plan_tsv_sha
+delete_plan_identity_sha256=$plan_identity
+IDENTITY
+
+  # D2-3 also proves every candidate resolves beneath PROD_PATH without writing
+  # or scanning the production tree.  The remote Bash program is passed as an
+  # argument so stdin remains exclusively the certified deletion plan.
+  local validate_script validate_script_q validate_result
+  validate_script="$(cat <<'REMOTE_PLAN_VALIDATE'
+set -Eeuo pipefail
+root="$(readlink -f -- "$REMOTE_PATH")"
+[[ -d "$root" ]] || exit 71
+while IFS=$'\t' read -r expected_sha expected_size rel; do
+  [[ -n "$rel" ]] || continue
+  [[ "$expected_sha" =~ ^[0-9a-f]{64}$ ]] || exit 76
+  [[ "$expected_size" =~ ^[0-9]+$ ]] || exit 77
+  [[ "$rel" != /* && "$rel" != *$'\n'* && "$rel" != *$'\r'* && "$rel" != *$'\t'* && "$rel" != *\\* ]] || exit 72
+  candidate="$(readlink -m -- "$root/$rel")"
+  case "$candidate" in "$root"/*) ;; *) exit 73 ;; esac
+  [[ ! -L "$root/$rel" ]] || exit 74
+  if [[ -e "$root/$rel" ]]; then
+    [[ -f "$root/$rel" ]] || exit 75
+    actual_sha="$(sha256sum -- "$root/$rel" | awk '{print $1}')"
+    actual_size="$(stat -c '%s' -- "$root/$rel")"
+    [[ "$actual_sha" == "$expected_sha" ]] || exit 78
+    [[ "$actual_size" == "$expected_size" ]] || exit 79
+  fi
+done
+echo 'REMOTE_PATH_VALIDATION=PASS'
+REMOTE_PLAN_VALIDATE
+)"
+  printf -v validate_script_q '%q' "$validate_script"
+  validate_result="$(cat "$PROOF_DIR/d2-3-delete-plan.tsv" | "${SSH_BASE[@]}" "$REMOTE" "REMOTE_PATH=$remote_path_q bash -c $validate_script_q")"
+  [[ "$validate_result" == 'REMOTE_PATH_VALIDATION=PASS' ]] || { echo "Remote D2-3 path validation result missing." >&2; exit 1; }
+
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    {
+      echo
+      echo '## ${PLAN_PHASE_LABEL:-D2-3} — Deployment-owned manifest deletion dry run'
+      echo
+      echo '- Previous certified Deployment ownership manifest: **AVAILABLE**'
+      echo '- New canonical Deployment ownership manifest: **AVAILABLE**'
+      echo '- Production-root tree scan: **NOT PERFORMED**'
+      echo '- Candidate rule: **previously Deployment-owned AND absent from new canonical manifest**'
+      echo '- Every candidate previously Deployment-owned: **PASS**'
+      echo '- Every candidate absent from new canonical ownership manifest: **PASS**'
+      echo '- Beneath-PROD_PATH resolution / protected-path validation: **PASS**'
+      echo '- Existing candidate bytes still match previous certified hash/size: **PASS**'
+      printf -- '- Candidate obsolete files: `%s`\n' "$candidate_count"
+      printf -- '- Candidate obsolete bytes: `%s`\n' "$candidate_bytes"
+      printf -- '- Exact delete-plan TSV SHA-256: `%s`\n' "$plan_tsv_sha"
+      printf -- '- Commit-bound delete-plan identity SHA-256: `%s`\n' "$plan_identity"
+      echo '- Production deletion: **NONE / DRY RUN**'
+      echo
+      echo '<details><summary>Exact candidate deletion list</summary>'
+      echo
+      echo '```text'
+      if [[ "$candidate_count" == '0' ]]; then
+        echo '<empty>'
+      else
+        cat "$PROOF_DIR/d2-3-delete-candidates.txt"
+      fi
+      echo '```'
+      echo '</details>'
+    } >> "$GITHUB_STEP_SUMMARY"
+  fi
+}
+
+manifest_delete_apply() {
+  [[ -n "$PROOF_DIR" && -d "$PROOF_DIR" ]] || { echo "Proof directory missing." >&2; exit 1; }
+  [[ -f "$PROOF_DIR/d2-3-delete-plan.tsv" ]] || { echo "D2-3 delete plan missing." >&2; exit 1; }
+  [[ -n "${EXPECTED_DELETE_PLAN_SHA256:-}" ]] || { echo "EXPECTED_DELETE_PLAN_SHA256 missing." >&2; exit 1; }
+  [[ "$EXPECTED_DELETE_PLAN_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "Expected delete-plan SHA-256 is malformed." >&2; exit 1; }
+
+  [[ -f "$PROOF_DIR/d2-3-delete-plan-identity.sha256" ]] || { echo "D2-3 commit-bound plan identity missing." >&2; exit 1; }
+  local actual_identity
+  actual_identity="$(cat "$PROOF_DIR/d2-3-delete-plan-identity.sha256")"
+  [[ "$actual_identity" == "$EXPECTED_DELETE_PLAN_SHA256" ]] || {
+    echo "D2-4 delete plan does not match the separately proved, commit-bound D2-3 plan." >&2
+    echo "Expected: $EXPECTED_DELETE_PLAN_SHA256" >&2
+    echo "Actual:   $actual_identity" >&2
+    exit 41
+  }
+
+  local candidate_count
+  candidate_count="$(grep -cve '^$' "$PROOF_DIR/d2-3-delete-plan.tsv" || true)"
+  [[ "$candidate_count" -gt 0 ]] || {
+    echo "D2-4 requires at least one manifest-owned obsolete application file." >&2
+    exit 42
+  }
+
+  local delete_script delete_script_q result
+  delete_script="$(cat <<'REMOTE_DELETE'
+set -Eeuo pipefail
+root="$(readlink -f -- "$REMOTE_PATH")"
+[[ -d "$root" ]] || exit 51
+removed=0
+already_absent=0
+
+protected() {
+  case "$1" in
+    .env|.env.*|.git|.git/*|.github|.github/*|.well-known|.well-known/*|storage/logs|storage/logs/*|storage/cache|storage/cache/*|storage/tmp|storage/tmp/*|.fitcrew-deployment/*)
+      return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+while IFS=$'\t' read -r expected_sha expected_size rel; do
+  [[ -n "$rel" ]] || continue
+  [[ "$expected_sha" =~ ^[0-9a-f]{64}$ ]] || { echo "INVALID_SHA=$rel"; exit 52; }
+  [[ "$expected_size" =~ ^[0-9]+$ ]] || { echo "INVALID_SIZE=$rel"; exit 53; }
+  [[ "$rel" != /* && "$rel" != *$'\n'* && "$rel" != *$'\r'* && "$rel" != *$'\t'* && "$rel" != *\\* ]] || {
+    echo "UNSAFE_PATH=$rel"; exit 54;
+  }
+  IFS='/' read -r -a parts <<< "$rel"
+  for part in "${parts[@]}"; do
+    [[ -n "$part" && "$part" != '.' && "$part" != '..' ]] || { echo "UNSAFE_SEGMENT=$rel"; exit 55; }
+  done
+  protected "$rel" && { echo "PROTECTED_PATH=$rel"; exit 56; }
+
+  target="$root/$rel"
+  if [[ ! -e "$target" && ! -L "$target" ]]; then
+    printf 'ALREADY_ABSENT=%s\n' "$rel"
+    already_absent=$((already_absent + 1))
+    continue
+  fi
+  [[ ! -L "$target" ]] || { echo "SYMLINK_REFUSED=$rel"; exit 57; }
+  [[ -f "$target" ]] || { echo "NON_REGULAR_REFUSED=$rel"; exit 58; }
+  resolved="$(readlink -f -- "$target")"
+  case "$resolved" in
+    "$root"/*) ;;
+    *) echo "OUTSIDE_PROD_PATH=$rel"; exit 59 ;;
+  esac
+  actual_sha="$(sha256sum -- "$target" | awk '{print $1}')"
+  [[ "$actual_sha" == "$expected_sha" ]] || { echo "REMOTE_HASH_CHANGED=$rel"; exit 60; }
+  actual_size="$(stat -c '%s' -- "$target")"
+  [[ "$actual_size" == "$expected_size" ]] || { echo "REMOTE_SIZE_CHANGED=$rel"; exit 61; }
+
+  rm -- "$target"
+  [[ ! -e "$target" && ! -L "$target" ]] || { echo "DELETE_FAILED=$rel"; exit 62; }
+  printf 'REMOVED=%s\n' "$rel"
+  removed=$((removed + 1))
+done
+printf 'REMOVED_COUNT=%s\n' "$removed"
+printf 'ALREADY_ABSENT_COUNT=%s\n' "$already_absent"
+REMOTE_DELETE
+)"
+  printf -v delete_script_q '%q' "$delete_script"
+  result="$(cat "$PROOF_DIR/d2-3-delete-plan.tsv" | "${SSH_BASE[@]}" "$REMOTE" "REMOTE_PATH=$remote_path_q bash -c $delete_script_q")"
+  printf '%s\n' "$result" | tee "$PROOF_DIR/d2-4-delete-result.txt"
+
+  local removed_count absent_count
+  removed_count="$(printf '%s\n' "$result" | sed -n 's/^REMOVED_COUNT=//p')"
+  absent_count="$(printf '%s\n' "$result" | sed -n 's/^ALREADY_ABSENT_COUNT=//p')"
+  [[ -n "$removed_count" && -n "$absent_count" ]] || { echo "D2-4 deletion result counters missing." >&2; exit 1; }
+
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    cat >> "$GITHUB_STEP_SUMMARY" <<SUMMARY
+
+## D2-4 — Manifest-owned obsolete-file removal
+
+- D2-3 delete-plan identity match: **PASS**
+- Commit-bound delete-plan identity SHA-256: \`$actual_identity\`
+- Candidate files: \`$candidate_count\`
+- Exact old-byte hash/size verified before each removal: **PASS**
+- Removed files: \`$removed_count\`
+- Already-absent files (safe rerun): \`$absent_count\`
+- Directory deletion: **NONE**
+- Broad rsync delete: **NOT USED**
+- Server-tree scan: **NOT PERFORMED**
+- .env interaction: **NONE**
 SUMMARY
   fi
 }
@@ -411,7 +741,7 @@ SUMMARY
   if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     cat >> "$GITHUB_STEP_SUMMARY" <<SUMMARY
 
-## D2-2 — Remote verification and deployment certification
+## ${CERTIFY_PHASE_LABEL:-D2-2} — Remote verification and deployment certification
 
 - Governed application payload verification: **PASS** ($((app_verify_end - app_verify_start)) ms)
 - Vendor verification: **$vendor_verification_result** ($((vendor_verify_end - vendor_verify_start)) ms)
@@ -441,6 +771,12 @@ case "$MODE" in
     ;;
   deploy)
     run_rsync deploy
+    ;;
+  manifest-delete-plan)
+    manifest_delete_plan
+    ;;
+  manifest-delete-apply)
+    manifest_delete_apply
     ;;
   verify-certify)
     verify_and_certify
