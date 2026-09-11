@@ -53,10 +53,17 @@ if (!str_contains($dashboard, 'class="action-cue">Start here</p>') || str_contai
     throw new RuntimeException('Overview Start here cue is not positioned as non-button helper text.');
 }
 
+$challengeHome = file_get_contents($root . '/views/app/challenge/home.php') ?: '';
+foreach (['challenge-lifecycle-modal', 'data-modal-open="challenge-lifecycle-modal"', 'Challenge journey', 'Stage <?=', 'Needs Attention', 'FC_CHALLENGE_LIFECYCLES'] as $required) {
+    if (!str_contains($challengeHome, $required)) {
+        throw new RuntimeException('Challenge lifecycle journey/modal contract is missing: ' . $required);
+    }
+}
+
 $js = file_get_contents($root . '/assets/js/app.js') ?: '';
-foreach (['data-challenge-dates', 'data-planned-end', 'defaultDays'] as $required) {
+foreach (['data-challenge-dates', 'data-planned-end', 'defaultDays', 'data-modal-open', 'data-fitcrew-modal', 'showModal'] as $required) {
     if (!str_contains($js, $required)) {
-        throw new RuntimeException('Challenge date calculation behavior is missing: ' . $required);
+        throw new RuntimeException('Challenge date/modal behavior is missing: ' . $required);
     }
 }
 
@@ -66,9 +73,9 @@ if (!str_contains($health, 'Connection is not available yet.') || !str_contains(
 }
 
 $css = file_get_contents($root . '/assets/css/app.css') ?: '';
-foreach ([':focus-visible', '.mobile-app-nav', '@media (max-width: 760px)', '.challenge-subnav'] as $required) {
+foreach ([':focus-visible', '.mobile-app-nav', '@media (max-width: 760px)', '.challenge-subnav', '.fc-modal::backdrop', '.lifecycle-timeline', '.lifecycle-badge-button'] as $required) {
     if (!str_contains($css, $required)) {
-        throw new RuntimeException('Responsive/accessibility stylesheet contract is missing: ' . $required);
+        throw new RuntimeException('Responsive/accessibility/modal stylesheet contract is missing: ' . $required);
     }
 }
 
@@ -81,3 +88,4 @@ fwrite(STDOUT, "- truthful held Health runtime state: PASS\n");
 fwrite(STDOUT, "- mobile navigation / focus-visible accessibility foundation: PASS\n");
 fwrite(STDOUT, "- Challenge setup dates/defaults/progress + consumer copy: PASS\n");
 fwrite(STDOUT, "- Overview Start here helper cue: PASS\n");
+fwrite(STDOUT, "- Challenge lifecycle journey + FitCrew modal foundation: PASS\n");

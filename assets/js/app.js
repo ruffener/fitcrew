@@ -1,6 +1,65 @@
 (() => {
     document.documentElement.classList.add('fitcrew-js-ready');
 
+    const modalTriggers = document.querySelectorAll('[data-modal-open]');
+    const modalCloseButtons = document.querySelectorAll('[data-modal-close]');
+    let modalReturnFocus = null;
+
+    const closeFitCrewModal = (modal) => {
+        if (!(modal instanceof HTMLDialogElement) || !modal.open) {
+            return;
+        }
+
+        modal.close();
+    };
+
+    modalTriggers.forEach((trigger) => {
+        trigger.addEventListener('click', () => {
+            const modalId = trigger.getAttribute('data-modal-open');
+            const modal = modalId ? document.getElementById(modalId) : null;
+
+            if (!(modal instanceof HTMLDialogElement)) {
+                return;
+            }
+
+            modalReturnFocus = trigger;
+            document.body.classList.add('fc-modal-open');
+            modal.showModal();
+
+            const closeButton = modal.querySelector('[data-modal-close]');
+            if (closeButton instanceof HTMLElement) {
+                closeButton.focus();
+            }
+        });
+    });
+
+    modalCloseButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            closeFitCrewModal(button.closest('dialog'));
+        });
+    });
+
+    document.querySelectorAll('[data-fitcrew-modal]').forEach((modal) => {
+        if (!(modal instanceof HTMLDialogElement)) {
+            return;
+        }
+
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal) {
+                closeFitCrewModal(modal);
+            }
+        });
+
+        modal.addEventListener('close', () => {
+            document.body.classList.remove('fc-modal-open');
+
+            if (modalReturnFocus instanceof HTMLElement) {
+                modalReturnFocus.focus();
+            }
+            modalReturnFocus = null;
+        });
+    });
+
     const toggle = document.querySelector('.nav-toggle');
     const nav = document.getElementById('primary-navigation');
 
