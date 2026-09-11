@@ -344,12 +344,17 @@ button.button {
     font-weight: 800;
     line-height: 1.2;
     cursor: pointer;
-    transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease, border-color 140ms ease;
+    transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease, border-color 150ms ease, color 150ms ease;
 }
 
-.button:hover {
+.button:hover,
+.button:focus-visible {
     text-decoration: none;
-    transform: translateY(-1px);
+    transform: translateY(-2px);
+}
+
+.button:active {
+    transform: translateY(0);
 }
 
 .button-primary {
@@ -3737,6 +3742,74 @@ body.fc-modal-open {
     min-width: 0;
 }
 
+/* FitCrew interaction language: cards/tiles move, brighten, and reveal direction. */
+.fc-clickable-card,
+.fc-action-tile {
+    position: relative;
+    cursor: pointer;
+    text-decoration: none !important;
+    transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.fc-clickable-card:hover,
+.fc-clickable-card:focus-visible,
+.fc-action-tile:hover,
+.fc-action-tile:focus-visible {
+    text-decoration: none !important;
+    transform: translateY(-3px);
+    border-color: #8ea8e8;
+    background: linear-gradient(180deg, #ffffff, #f1f5ff);
+    box-shadow: 0 16px 34px rgba(30, 64, 175, 0.14);
+    outline: none;
+}
+
+.fc-clickable-card:focus-visible,
+.fc-action-tile:focus-visible {
+    box-shadow: 0 0 0 3px rgba(38, 77, 201, 0.18), 0 16px 34px rgba(30, 64, 175, 0.14);
+}
+
+.fc-clickable-card:active,
+.fc-action-tile:active {
+    transform: translateY(-1px);
+}
+
+.fc-card-open-cue {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--fc-royal-blue);
+    font-size: 0.68rem;
+    font-weight: 850;
+    white-space: nowrap;
+}
+
+.fc-card-open-cue span,
+.fc-action-chevron {
+    transition: transform 160ms ease;
+}
+
+.fc-clickable-card:hover .fc-card-open-cue span,
+.fc-clickable-card:focus-visible .fc-card-open-cue span {
+    transform: translateX(4px);
+}
+
+.fc-action-tile:hover .fc-action-chevron,
+.fc-action-tile:focus-visible .fc-action-chevron {
+    transform: translate(4px, -50%);
+}
+
+.challenge-index-create-action {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    display: flex;
+    justify-content: flex-end;
+    border-top: 1px solid var(--fc-border);
+}
+
+.challenge-index-create-action form {
+    margin: 0;
+}
+
 .challenge-action-grid {
     margin-top: 1rem;
     display: grid;
@@ -3746,7 +3819,7 @@ body.fc-modal-open {
 
 .challenge-action-button {
     min-height: 116px;
-    padding: 1rem;
+    padding: 1rem 3.2rem 1rem 1rem;
     display: grid;
     align-content: center;
     gap: 0.28rem;
@@ -3754,16 +3827,7 @@ body.fc-modal-open {
     border-radius: 16px;
     color: var(--fc-deep-navy);
     background: linear-gradient(180deg, #ffffff, #f8faff);
-    text-decoration: none;
     box-shadow: 0 6px 18px rgba(13, 27, 61, 0.04);
-    transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
-}
-
-.challenge-action-button:hover,
-.challenge-action-button:focus-visible {
-    transform: translateY(-1px);
-    border-color: #aebfe5;
-    box-shadow: 0 10px 24px rgba(30, 64, 175, 0.09);
 }
 
 .challenge-action-button > span {
@@ -3783,6 +3847,25 @@ body.fc-modal-open {
     color: var(--fc-text-muted);
     font-size: 0.68rem;
     line-height: 1.4;
+}
+
+.fc-action-chevron {
+    position: absolute;
+    top: 50%;
+    right: 1rem;
+    width: 2rem;
+    height: 2rem;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    color: #fff !important;
+    background: var(--fc-royal-blue);
+    box-shadow: 0 8px 18px rgba(30, 64, 175, 0.2);
+    font-size: 1rem !important;
+    font-weight: 900 !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+    transform: translateY(-50%);
 }
 
 @media (max-width: 820px) {
@@ -3808,7 +3891,13 @@ body.fc-modal-open {
     .fc-modal-actions .button,
     .fc-modal-actions form,
     .challenge-row-actions .button,
-    .challenge-row-actions form {
+    .challenge-row-actions form,
+    .challenge-index-create-action .button,
+    .challenge-index-create-action form {
         width: 100%;
+    }
+
+    .challenge-index-create-action {
+        justify-content: stretch;
     }
 }

@@ -60,6 +60,34 @@
         });
     });
 
+    const clickableCards = document.querySelectorAll('[data-submit-form]');
+
+    const submitClickableCard = (card) => {
+        const formId = card.getAttribute('data-submit-form');
+        const form = formId ? document.getElementById(formId) : null;
+
+        if (form instanceof HTMLFormElement) {
+            form.requestSubmit();
+        }
+    };
+
+    clickableCards.forEach((card) => {
+        card.addEventListener('click', (event) => {
+            if (event.target instanceof Element && event.target.closest('button, a, input, select, textarea, label, form')) {
+                return;
+            }
+            submitClickableCard(card);
+        });
+
+        card.addEventListener('keydown', (event) => {
+            if (event.target !== card || (event.key !== 'Enter' && event.key !== ' ')) {
+                return;
+            }
+            event.preventDefault();
+            submitClickableCard(card);
+        });
+    });
+
     const toggle = document.querySelector('.nav-toggle');
     const nav = document.getElementById('primary-navigation');
 

@@ -38,7 +38,7 @@ if (!str_contains($subnav, '/challenge.php?view=detail')) {
 }
 
 $challengeIndex = file_get_contents($root . '/views/app/challenge/index.php') ?: '';
-foreach (['Your competitions.', 'Create Challenge', 'Open Challenge', 'Delete Draft', 'fc-modal-danger'] as $required) {
+foreach (['Your competitions.', 'Create New Challenge', 'fc-clickable-card', 'data-submit-form', 'fc-card-open-cue', 'Delete Draft', 'fc-modal-danger'] as $required) {
     if (!str_contains($challengeIndex, $required)) {
         throw new RuntimeException('Challenge list/management contract is missing: ' . $required);
     }
@@ -107,7 +107,7 @@ if (str_contains($crewView, '/challenge.php?new=1')) {
 }
 
 $challengeHome = file_get_contents($root . '/views/app/challenge/home.php') ?: '';
-foreach (['challenge-lifecycle-modal', 'data-modal-open="challenge-lifecycle-modal"', 'Challenge journey', 'Stage <?=', 'Needs Attention', 'FC_CHALLENGE_LIFECYCLES', 'challenge-action-grid', 'Participants', 'Health readiness', 'Review Challenge Rules'] as $required) {
+foreach (['challenge-lifecycle-modal', 'data-modal-open="challenge-lifecycle-modal"', 'Challenge journey', 'Stage <?=', 'Needs Attention', 'FC_CHALLENGE_LIFECYCLES', 'challenge-action-grid', 'fc-action-tile', 'fc-action-chevron', 'Participants', 'Health readiness', 'Review Challenge Rules'] as $required) {
     if (!str_contains($challengeHome, $required)) {
         throw new RuntimeException('Challenge lifecycle/action contract is missing: ' . $required);
     }
@@ -124,7 +124,7 @@ if (!str_contains($contextSource, 'fc_product_context_persist($pdo, $userId, $cr
 }
 
 $js = file_get_contents($root . '/assets/js/app.js') ?: '';
-foreach (['data-challenge-dates', 'data-planned-end', 'data-duration-weeks', 'data-finish-mode', 'defaultDays', 'data-modal-open', 'data-fitcrew-modal', 'showModal'] as $required) {
+foreach (['data-challenge-dates', 'data-planned-end', 'data-duration-weeks', 'data-finish-mode', 'defaultDays', 'data-modal-open', 'data-fitcrew-modal', 'showModal', 'data-submit-form', 'requestSubmit'] as $required) {
     if (!str_contains($js, $required)) {
         throw new RuntimeException('Challenge date/modal behavior is missing: ' . $required);
     }
@@ -136,7 +136,7 @@ if (!str_contains($health, 'Connection is not available yet.') || !str_contains(
 }
 
 $css = file_get_contents($root . '/assets/css/app.css') ?: '';
-foreach ([':focus-visible', '.mobile-app-nav', '@media (max-width: 760px)', '.challenge-subnav', '.fc-modal::backdrop', '.lifecycle-timeline', '.lifecycle-badge-button', '.challenge-action-grid', '.fc-modal-hero-danger', '.button-danger', '.member-remove-button'] as $required) {
+foreach ([':focus-visible', '.mobile-app-nav', '@media (max-width: 760px)', '.challenge-subnav', '.fc-modal::backdrop', '.lifecycle-timeline', '.lifecycle-badge-button', '.challenge-action-grid', '.fc-clickable-card', '.fc-action-tile', '.challenge-index-create-action', '.fc-action-chevron', '.fc-modal-hero-danger', '.button-danger', '.member-remove-button'] as $required) {
     if (!str_contains($css, $required)) {
         throw new RuntimeException('Responsive/accessibility/modal stylesheet contract is missing: ' . $required);
     }
@@ -154,5 +154,7 @@ fwrite(STDOUT, "- Overview Start here helper cue: PASS\n");
 fwrite(STDOUT, "- Overview Challenge-first hierarchy + per-Challenge status: PASS\n");
 fwrite(STDOUT, "- Crew selection + member add/remove modal contract: PASS\n");
 fwrite(STDOUT, "- Challenge list/detail routing + Draft delete modal contract: PASS\n");
+fwrite(STDOUT, "- FitCrew clickable-card / action-tile interaction standard: PASS\n");
+fwrite(STDOUT, "- Challenge list Create New Challenge placement + whole-card navigation: PASS\n");
 fwrite(STDOUT, "- Challenge Home focused action buttons: PASS\n");
 fwrite(STDOUT, "- Challenge lifecycle journey + FitCrew modal foundation: PASS\n");

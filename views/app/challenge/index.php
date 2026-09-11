@@ -53,14 +53,6 @@ foreach ($appContext['crews'] as $crewCandidate) {
                         <p class="card-kicker">Crew</p>
                         <h2><?= fc_e((string) $groupCrew['display_name']) ?></h2>
                     </div>
-                    <?php if ((string) $groupCrew['membership_role'] === 'OWNER'): ?>
-                        <form method="post" action="/challenge.php">
-                            <?= fc_csrf_input() ?>
-                            <input type="hidden" name="action" value="prepare_new_challenge">
-                            <input type="hidden" name="crew_public_id" value="<?= fc_e((string) $groupCrew['public_id']) ?>">
-                            <button class="button button-primary button-small" type="submit">Create Challenge</button>
-                        </form>
-                    <?php endif; ?>
                 </div>
 
                 <?php if ($groupChallenges === []): ?>
@@ -84,7 +76,14 @@ foreach ($appContext['crews'] as $crewCandidate) {
                                 && (int) $listedChallenge['participant_count'] === 0;
                             $deleteModalId = 'delete-challenge-' . (string) $listedChallenge['public_id'];
                             ?>
-                            <article class="challenge-row challenge-index-row">
+                            <?php $selectFormId = 'select-challenge-' . (string) $listedChallenge['public_id']; ?>
+                            <article
+                                class="challenge-row challenge-index-row fc-clickable-card"
+                                role="button"
+                                tabindex="0"
+                                data-submit-form="<?= fc_e($selectFormId) ?>"
+                                aria-label="Open <?= fc_e((string) $listedChallenge['display_name']) ?>"
+                            >
                                 <div class="challenge-index-title">
                                     <span class="status-chip status-chip-neutral"><?= fc_e(fc_challenge_lifecycle_label((string) $listedChallenge['lifecycle_status'], (string) $listedChallenge['operational_state'])) ?></span>
                                     <h3><?= fc_e((string) $listedChallenge['display_name']) ?></h3>
@@ -94,11 +93,12 @@ foreach ($appContext['crews'] as $crewCandidate) {
                                     <?php if ($canDeleteDraft): ?>
                                         <button class="button button-danger-ghost button-small" type="button" data-modal-open="<?= fc_e($deleteModalId) ?>">Delete Draft</button>
                                     <?php endif; ?>
-                                    <form method="post" action="/challenge.php">
-                                        <?= fc_csrf_input() ?>
-                                        <button class="button button-primary button-small" type="submit" name="select_challenge" value="<?= fc_e((string) $listedChallenge['public_id']) ?>">Open Challenge</button>
-                                    </form>
+                                    <span class="fc-card-open-cue" aria-hidden="true">Open <span>→</span></span>
                                 </div>
+                                <form id="<?= fc_e($selectFormId) ?>" method="post" action="/challenge.php" hidden>
+                                    <?= fc_csrf_input() ?>
+                                    <input type="hidden" name="select_challenge" value="<?= fc_e((string) $listedChallenge['public_id']) ?>">
+                                </form>
                             </article>
 
                             <?php if ($canDeleteDraft): ?>
@@ -131,6 +131,17 @@ foreach ($appContext['crews'] as $crewCandidate) {
                                 </dialog>
                             <?php endif; ?>
                         <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+
+                <?php if ((string) $groupCrew['membership_role'] === 'OWNER'): ?>
+                    <div class="challenge-index-create-action">
+                        <form method="post" action="/challenge.php">
+                            <?= fc_csrf_input() ?>
+                            <input type="hidden" name="action" value="prepare_new_challenge">
+                            <input type="hidden" name="crew_public_id" value="<?= fc_e((string) $groupCrew['public_id']) ?>">
+                            <button class="button button-primary" type="submit">Create New Challenge</button>
+                        </form>
                     </div>
                 <?php endif; ?>
             </section>

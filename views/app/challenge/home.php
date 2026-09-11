@@ -133,20 +133,23 @@ $lifecycleDescriptions = [
 
 <?php $participantCount = count(fc_challenge_participants($pdo, $userId, (int) $challenge['id'])); ?>
 <section class="challenge-action-grid" aria-label="Challenge details">
-    <a class="challenge-action-button" href="/participants.php">
+    <a class="challenge-action-button fc-action-tile" href="/participants.php">
         <span>Participants</span>
         <strong><?= fc_e((string) $participantCount) ?></strong>
         <small>View Challenge roster</small>
+        <span class="fc-action-chevron" aria-hidden="true">→</span>
     </a>
-    <a class="challenge-action-button" href="/rules.php">
+    <a class="challenge-action-button fc-action-tile" href="/rules.php">
         <span>Rules</span>
         <strong><?= $currentRule !== null ? 'Published v' . fc_e((string) $currentRule['version_number']) : 'Draft' ?></strong>
         <small>Review Challenge Rules</small>
+        <span class="fc-action-chevron" aria-hidden="true">→</span>
     </a>
-    <a class="challenge-action-button" href="/health/google/status.php">
+    <a class="challenge-action-button fc-action-tile" href="/health/google/status.php">
         <span>Health readiness</span>
         <strong>Not connected</strong>
         <small>View Health Connections</small>
+        <span class="fc-action-chevron" aria-hidden="true">→</span>
     </a>
 </section>
 
