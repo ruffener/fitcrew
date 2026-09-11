@@ -52,6 +52,16 @@ $dashboard = file_get_contents($root . '/views/app/dashboard.php') ?: '';
 if (!str_contains($dashboard, 'class="action-cue">Start here</p>') || str_contains($dashboard, 'status-chip status-chip-orange">Start here</span>')) {
     throw new RuntimeException('Overview Start here cue is not positioned as non-button helper text.');
 }
+foreach (['Your Challenges', 'Choose your competition.', 'overview-challenge-card', 'Lifecycle', 'Your status', 'Rules', 'Open Challenge'] as $required) {
+    if (!str_contains($dashboard, $required)) {
+        throw new RuntimeException('Overview Challenge-first contract is missing: ' . $required);
+    }
+}
+foreach (['No action needed.', 'Awaiting governed truth', 'overview-grid overview-grid-three', 'status-chip status-chip-blue'] as $retired) {
+    if (str_contains($dashboard, $retired)) {
+        throw new RuntimeException('Overview still contains retired summary/status treatment: ' . $retired);
+    }
+}
 
 $challengeHome = file_get_contents($root . '/views/app/challenge/home.php') ?: '';
 foreach (['challenge-lifecycle-modal', 'data-modal-open="challenge-lifecycle-modal"', 'Challenge journey', 'Stage <?=', 'Needs Attention', 'FC_CHALLENGE_LIFECYCLES'] as $required) {
@@ -88,4 +98,5 @@ fwrite(STDOUT, "- truthful held Health runtime state: PASS\n");
 fwrite(STDOUT, "- mobile navigation / focus-visible accessibility foundation: PASS\n");
 fwrite(STDOUT, "- Challenge setup dates/defaults/progress + consumer copy: PASS\n");
 fwrite(STDOUT, "- Overview Start here helper cue: PASS\n");
+fwrite(STDOUT, "- Overview Challenge-first hierarchy + per-Challenge status: PASS\n");
 fwrite(STDOUT, "- Challenge lifecycle journey + FitCrew modal foundation: PASS\n");
