@@ -116,11 +116,13 @@
         const endInput = form.querySelector('[data-planned-end]');
         const durationInput = form.querySelector('[data-duration-days]');
         const summary = form.querySelector('[data-duration-summary]');
+        const durationWeeksInput = form.querySelector('[data-duration-weeks]');
+        const calculatedEnd = form.querySelector('[data-calculated-end]');
+        const finishModeInputs = Array.from(form.querySelectorAll('[data-finish-mode]'));
+        const finishPanels = Array.from(form.querySelectorAll('[data-finish-panel]'));
         const defaultDays = Number.parseInt(form.getAttribute('data-default-duration') || '84', 10);
 
-        if (!(startInput instanceof HTMLInputElement)
-            || !(endInput instanceof HTMLInputElement)
-            || !(durationInput instanceof HTMLInputElement)) {
+        if (!(startInput instanceof HTMLInputElement) || !(durationInput instanceof HTMLInputElement)) {
             return;
         }
 
@@ -140,6 +142,13 @@
             return `${year}-${month}-${day}`;
         };
 
+        const displayDate = (date) => new Intl.DateTimeFormat('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            timeZone: 'UTC',
+        }).format(date);
+
         const durationText = (days) => {
             if (!Number.isInteger(days) || days <= 0) {
                 return '';
@@ -158,6 +167,92 @@
 
             return `${days} days`;
         };
+
+        // New Challenge setup: the Owner deliberately chooses either a duration
+        // in whole weeks or an exact end date. Both resolve to canonical days.
+        if (finishModeInputs.length > 0 && durationWeeksInput instanceof HTMLInputElement && endInput instanceof HTMLInputElement) {
+            const currentMode = () => {
+                const checked = finishModeInputs.find((input) => input instanceof HTMLInputElement && input.checked);
+                return checked instanceof HTMLInputElement ? checked.value : 'duration';
+            };
+
+            const syncPanels = () => {
+                const mode = currentMode();
+                finishPanels.forEach((panel) => {
+                    if (!(panel instanceof HTMLElement)) {
+                        return;
+                    }
+                    panel.hidden = panel.dataset.finishPanel !== mode;
+                });
+                endInput.disabled = mode !== 'end_date';
+                durationWeeksInput.disabled = mode !== 'duration';
+            };
+
+            const updateFromWeeks = () => {
+                const start = parseDate(startInput.value);
+                const weeks = Number.parseInt(durationWeeksInput.value || '12', 10);
+                const safeWeeks = Number.isInteger(weeks) && weeks >= 1 && weeks <= 52 ? weeks : 12;
+                const days = safeWeeks * 7;
+                durationInput.value = String(days);
+
+                if (!start) {
+                    if (calculatedEnd) {
+                        calculatedEnd.textContent = 'Choose a begin date';
+                    }
+                    return;
+                }
+
+                const end = new Date(start.getTime());
+                end.setUTCDate(end.getUTCDate() + days);
+                if (calculatedEnd) {
+                    calculatedEnd.textContent = displayDate(end);
+                }
+            };
+
+            const updateFromEndDate = () => {
+                const start = parseDate(startInput.value);
+                const end = parseDate(endInput.value);
+                endInput.min = startInput.value || '';
+
+                if (!start || !end) {
+                    durationInput.value = String(defaultDays);
+                    if (summary) {
+                        summary.textContent = start ? 'Choose an end date' : 'Choose a begin date first';
+                    }
+                    return;
+                }
+
+                const days = Math.round((end.getTime() - start.getTime()) / 86400000);
+                durationInput.value = String(days);
+                if (summary) {
+                    summary.textContent = days >= 7 && days <= 365
+                        ? durationText(days)
+                        : 'Choose an end date 7–365 days after the begin date.';
+                }
+            };
+
+            const update = () => {
+                syncPanels();
+                if (currentMode() === 'end_date') {
+                    updateFromEndDate();
+                } else {
+                    updateFromWeeks();
+                }
+            };
+
+            finishModeInputs.forEach((input) => input.addEventListener('change', update));
+            startInput.addEventListener('change', update);
+            durationWeeksInput.addEventListener('input', updateFromWeeks);
+            endInput.addEventListener('change', updateFromEndDate);
+            update();
+            return;
+        }
+
+        // Existing Rule-update forms retain the simpler bidirectional date
+        // behavior until the post-Wave-1 Challenge-management pass.
+        if (!(endInput instanceof HTMLInputElement)) {
+            return;
+        }
 
         const updateDuration = () => {
             const start = parseDate(startInput.value);

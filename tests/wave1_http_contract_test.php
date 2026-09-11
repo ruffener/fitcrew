@@ -35,17 +35,26 @@ foreach (['Home', 'Participants', 'Standings', 'History', 'Rules', 'aria-disable
 
 
 $challengeCreate = file_get_contents($root . '/views/app/challenge/create.php') ?: '';
-foreach (['planned_end_date', 'data-default-duration="84"', 'value="6" selected', 'Show provisional standings while the Challenge is live.', 'Step 1 of 2'] as $required) {
+foreach (['planned_end_date', 'data-default-duration="84"', 'data-duration-weeks', 'data-finish-mode', 'value="6" selected', 'Show provisional standings while the Challenge is live.', 'Step 1 of 2', 'Continue to Rules'] as $required) {
     if (!str_contains($challengeCreate, $required)) {
         throw new RuntimeException('Challenge setup UX contract is missing: ' . $required);
     }
 }
 
 $rulesView = file_get_contents($root . '/views/app/challenge/rules.php') ?: '';
-foreach (['planned_end_date', 'Step 2 of 2', 'Show provisional standings while the Challenge is live.'] as $required) {
+foreach (['planned_end_date', 'Step 2 of 2', 'Review the Rules.', 'Publish Challenge Rules', 'Adjust Challenge settings', 'Show provisional standings while the Challenge is live.'] as $required) {
     if (!str_contains($rulesView, $required)) {
         throw new RuntimeException('Rules setup UX contract is missing: ' . $required);
     }
+}
+
+
+$challengeController = file_get_contents($root . '/challenge.php') ?: '';
+if (str_contains($challengeController, "fc_flash('success', 'Challenge context updated.')")) {
+    throw new RuntimeException('Normal Challenge navigation still emits the retired context-updated success flash.');
+}
+if (!str_contains($challengeController, "fc_redirect('/rules.php');")) {
+    throw new RuntimeException('New Challenge creation must continue directly to the focused Rules review.');
 }
 
 $dashboard = file_get_contents($root . '/views/app/dashboard.php') ?: '';
@@ -71,7 +80,7 @@ foreach (['challenge-lifecycle-modal', 'data-modal-open="challenge-lifecycle-mod
 }
 
 $js = file_get_contents($root . '/assets/js/app.js') ?: '';
-foreach (['data-challenge-dates', 'data-planned-end', 'defaultDays', 'data-modal-open', 'data-fitcrew-modal', 'showModal'] as $required) {
+foreach (['data-challenge-dates', 'data-planned-end', 'data-duration-weeks', 'data-finish-mode', 'defaultDays', 'data-modal-open', 'data-fitcrew-modal', 'showModal'] as $required) {
     if (!str_contains($js, $required)) {
         throw new RuntimeException('Challenge date/modal behavior is missing: ' . $required);
     }
@@ -96,7 +105,7 @@ fwrite(STDOUT, "- Overview / Crew / Challenge navigation: PASS\n");
 fwrite(STDOUT, "- held Standings / History destinations marked unavailable: PASS\n");
 fwrite(STDOUT, "- truthful held Health runtime state: PASS\n");
 fwrite(STDOUT, "- mobile navigation / focus-visible accessibility foundation: PASS\n");
-fwrite(STDOUT, "- Challenge setup dates/defaults/progress + consumer copy: PASS\n");
+fwrite(STDOUT, "- Challenge setup end-date/duration choice + Rules handoff: PASS\n");
 fwrite(STDOUT, "- Overview Start here helper cue: PASS\n");
 fwrite(STDOUT, "- Overview Challenge-first hierarchy + per-Challenge status: PASS\n");
 fwrite(STDOUT, "- Challenge lifecycle journey + FitCrew modal foundation: PASS\n");

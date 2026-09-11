@@ -18,7 +18,7 @@ if (fc_is_post()) {
 
     try {
         if (fc_product_context_handle_selection($pdo, $userId, $_POST)) {
-            fc_flash('success', 'Challenge context updated.');
+            // Selecting a Challenge is normal navigation, not a success event.
         } elseif (($_POST['action'] ?? '') === 'create_challenge') {
             $context = fc_product_context($pdo, $userId);
             if ($context['crew'] === null) {
@@ -33,7 +33,7 @@ if (fc_is_post()) {
                 'live_leaderboard_visible' => isset($_POST['live_leaderboard_visible']),
             ]);
             fc_product_context_select_challenge($pdo, $userId, (int) $challenge['id']);
-            fc_flash('success', 'Challenge draft created. Review and publish its Rules when you are ready.');
+            fc_redirect('/rules.php');
         } elseif (($_POST['action'] ?? '') === 'join_challenge') {
             $publicId = trim((string) ($_POST['challenge_public_id'] ?? ''));
             $lookup = $pdo->prepare('SELECT id, crew_id FROM challenges WHERE public_id = :public_id LIMIT 1');
