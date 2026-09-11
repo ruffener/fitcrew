@@ -1,26 +1,22 @@
-name: FitCrew Deployment v2 Certified Delta + Manifest-Owned Deletion Proof
+name: Deploy FitCrew Production v2
 
 on:
   push:
     branches:
-      - develop
-    paths:
-      - '.github/workflows/deploy-v2-proof.yaml'
-      - '.github/deployment/**'
+      - main
   workflow_dispatch:
     inputs:
       phase:
-        description: 'Proof, D2-2 non-deleting deploy, D2-3 deletion dry run, or D2-4 exact manifest-owned deletion'
+        description: 'Proof, D2-3 deletion dry run, or D2-4 exact manifest-owned deletion'
         required: true
         default: 'proof'
         type: choice
         options:
           - proof
-          - d2-2
           - d2-3
           - d2-4
       confirmation:
-        description: 'For d2-2: DEPLOY-NON-DELETING. For d2-4: DELETE-MANIFEST-OWNED.'
+        description: 'For d2-4 only: DELETE-MANIFEST-OWNED.'
         required: false
         type: string
       deletion_plan_sha256:
@@ -32,12 +28,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && (inputs.phase == 'd2-2' || inputs.phase == 'd2-4') && 'fitcrew-production' || 'fitcrew-deployment-v2-proof' }}
+  group: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-4')) && 'fitcrew-production' || 'fitcrew-deployment-v2-proof' }}
   cancel-in-progress: false
 
 jobs:
   prove:
-    name: Prove certified delta, exact transfer, and manifest-owned deletion
+    name: Deploy certified Git delta and prove manifest-owned deletion
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -78,28 +74,35 @@ jobs:
           printf 'Production payload source commit: `%s`\n' "$commit" >> "$GITHUB_STEP_SUMMARY"
           printf 'Exact origin/main synchronization inside proof runner: **PASS**\n' >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Authorize D2-2 invocation
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2' }}
+      - name: Authorize routine main deployment
+        if: ${{ github.event_name == 'push' }}
         shell: bash
         run: |
           set -Eeuo pipefail
-          [[ "${{ github.ref_name }}" == "develop" ]] || {
-            echo "D2-2 proof implementation must run from develop." >&2
+          [[ "${{ github.ref_name }}" == "main" ]] || {
+            echo "Routine production deployment must be triggered by an accepted push to main." >&2
             exit 1
           }
-          [[ "${{ inputs.confirmation }}" == "DEPLOY-NON-DELETING" ]] || {
-            echo "D2-2 confirmation phrase did not match." >&2
+          echo 'Routine deployment authorization: **PASS / ACCEPTED MAIN PUSH**' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Authorize manual proof invocation
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'proof' }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "${{ github.ref_name }}" == "main" ]] || {
+            echo "Manual production proof must run from main." >&2
             exit 1
           }
-          echo 'D2-2 operator confirmation: **PASS / NON-DELETING ONLY**' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Manual production proof: **PASS / READ-ONLY**' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Authorize D2-3 invocation
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-3' }}
         shell: bash
         run: |
           set -Eeuo pipefail
-          [[ "${{ github.ref_name }}" == "develop" ]] || {
-            echo "D2-3 proof implementation must run from develop." >&2
+          [[ "${{ github.ref_name }}" == "main" ]] || {
+            echo "D2-3 proof implementation must run from main." >&2
             exit 1
           }
           echo 'D2-3 operator invocation: **PASS / DRY RUN ONLY**' >> "$GITHUB_STEP_SUMMARY"
@@ -109,8 +112,8 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          [[ "${{ github.ref_name }}" == "develop" ]] || {
-            echo "D2-4 proof implementation must run from develop." >&2
+          [[ "${{ github.ref_name }}" == "main" ]] || {
+            echo "D2-4 proof implementation must run from main." >&2
             exit 1
           }
           [[ "${{ inputs.confirmation }}" == "DELETE-MANIFEST-OWNED" ]] || {
@@ -511,21 +514,21 @@ jobs:
             "$RUNNER_TEMP/fitcrew-production-payload" \
             "$RUNNER_TEMP/fitcrew-deployment-proof"
 
-      - name: D2-2 — build read-only retirement plan when the target may obsolete owned files
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2' && steps.delta.outputs.noop != '1' && steps.delta.outputs.certified_chain == '1' && (steps.delta.outputs.production_deleted != '0' || steps.vendor_status.outputs.fast != '1') }}
+      - name: Routine — build read-only retirement plan when the target may obsolete owned files
+        if: ${{ github.event_name == 'push' && steps.delta.outputs.noop != '1' && steps.delta.outputs.certified_chain == '1' && (steps.delta.outputs.production_deleted != '0' || steps.vendor_status.outputs.fast != '1') }}
         shell: bash
         env:
           CERTIFIED_COMMIT: ${{ steps.cert_status.outputs.certified_commit }}
           MAIN_COMMIT: ${{ steps.main_source.outputs.commit }}
-          PLAN_PHASE_LABEL: D2-2 safety check
+          PLAN_PHASE_LABEL: Routine deployment safety check
         run: |
           set -Eeuo pipefail
           proof-repo/.github/deployment/deploy-v2-proof.sh manifest-delete-plan \
             "$RUNNER_TEMP/fitcrew-production-payload" \
             "$RUNNER_TEMP/fitcrew-deployment-proof"
 
-      - name: Prevent D2-2 certification from crossing manifest-owned removals
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-2' && steps.delta.outputs.noop != '1' }}
+      - name: Prevent routine certification from crossing manifest-owned removals
+        if: ${{ github.event_name == 'push' && steps.delta.outputs.noop != '1' }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -533,7 +536,7 @@ jobs:
           if [[ -f "$plan" ]]; then
             count="$(grep -cve '^$' "$plan" || true)"
             [[ "$count" == '0' ]] || {
-              echo "D2-2 is intentionally non-deleting and found $count obsolete Deployment-owned path(s)." >&2
+              echo "Routine deployment found $count obsolete Deployment-owned path(s) requiring governed manifest-owned deletion." >&2
               echo 'Run D2-3, review the exact manifest-owned delete plan, then D2-4.' >&2
               exit 1
             }
@@ -595,13 +598,13 @@ jobs:
             exit 1
           }
 
-      - name: D2-2/D2-4 — Git-diff-scoped production transfer / no broad delete
-        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.phase == 'd2-2' || inputs.phase == 'd2-4') && steps.delta.outputs.noop != '1' }}
+      - name: Routine/D2-4 — Git-diff-scoped production transfer / no broad delete
+        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-4')) && steps.delta.outputs.noop != '1' }}
         shell: bash
         env:
           MAIN_COMMIT: ${{ steps.main_source.outputs.commit }}
           VENDOR_FAST: ${{ steps.vendor_status.outputs.fast }}
-          DEPLOY_PHASE_LABEL: ${{ inputs.phase == 'd2-4' && 'D2-4' || 'D2-2' }}
+          DEPLOY_PHASE_LABEL: ${{ github.event_name == 'push' && 'Routine' || 'D2-4' }}
         run: |
           set -Eeuo pipefail
           if [[ "$VENDOR_FAST" == '1' && '${{ steps.delta.outputs.certified_chain }}' == '1' ]]; then
@@ -622,20 +625,20 @@ jobs:
             "$RUNNER_TEMP/fitcrew-production-payload" \
             "$RUNNER_TEMP/fitcrew-deployment-proof"
 
-      - name: D2-2/D2-4 — verify target payload and advance certification
-        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.phase == 'd2-2' || inputs.phase == 'd2-4') && steps.delta.outputs.noop != '1' }}
+      - name: Routine/D2-4 — verify target payload and advance certification
+        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-4')) && steps.delta.outputs.noop != '1' }}
         shell: bash
         env:
           MAIN_COMMIT: ${{ steps.main_source.outputs.commit }}
-          CERTIFY_PHASE_LABEL: ${{ inputs.phase == 'd2-4' && 'D2-4' || 'D2-2' }}
+          CERTIFY_PHASE_LABEL: ${{ github.event_name == 'push' && 'Routine' || 'D2-4' }}
         run: |
           set -Eeuo pipefail
           proof-repo/.github/deployment/deploy-v2-proof.sh verify-certify \
             "$RUNNER_TEMP/fitcrew-production-payload" \
             "$RUNNER_TEMP/fitcrew-deployment-proof"
 
-      - name: D2-2/D2-4 — production HTTP and security smoke
-        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.phase == 'd2-2' || inputs.phase == 'd2-4') }}
+      - name: Routine/D2-4 — production HTTP and security smoke
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.phase == 'd2-4') }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -656,7 +659,7 @@ jobs:
           done
           {
             echo
-            printf '## %s — HTTP/security smoke\n' '${{ inputs.phase == 'd2-4' && 'D2-4' || 'D2-2' }}'
+            printf '## %s — HTTP/security smoke\n' '${{ github.event_name == 'push' && 'Routine' || 'D2-4' }}'
             echo
             echo '- Production root HTTP 200: **PASS**'
             echo '- `.env` HTTP exposure: **BLOCKED**'
@@ -665,7 +668,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Preserve proof package for deletion proofs, deployments, or failures
-        if: ${{ failure() || (github.event_name == 'workflow_dispatch' && (inputs.phase == 'd2-2' || inputs.phase == 'd2-3' || inputs.phase == 'd2-4')) }}
+        if: ${{ failure() || (github.event_name == 'workflow_dispatch' && (inputs.phase == 'd2-3' || inputs.phase == 'd2-4')) }}
         uses: actions/upload-artifact@v4
         with:
           name: fitcrew-deployment-v2-proof-${{ github.run_id }}
