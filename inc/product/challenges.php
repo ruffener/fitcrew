@@ -58,7 +58,8 @@ function fc_challenges_for_user(PDO $pdo, int $userId, ?int $crewId = null): arr
 {
     $sql =
         'SELECT DISTINCT c.*, cr.public_id AS crew_public_id, cr.display_name AS crew_name, ' .
-        ' p.participation_status, p.entry_kind ' .
+        ' p.participation_status, p.entry_kind, ' .
+        ' (SELECT COUNT(*) FROM challenge_participations cp WHERE cp.challenge_id = c.id AND cp.participation_status = \'ACTIVE\') AS participant_count ' .
         'FROM challenges c ' .
         'JOIN crews cr ON cr.id = c.crew_id ' .
         'LEFT JOIN challenge_participations p ON p.challenge_id = c.id AND p.user_id = :participant_user_id ' .
@@ -189,4 +190,66 @@ function fc_challenge_participation_for_user(PDO $pdo, int $challengeId, int $us
     $statement->execute([':challenge_id' => $challengeId, ':user_id' => $userId]);
     $row = $statement->fetch(PDO::FETCH_ASSOC);
     return $row === false ? null : $row;
+}
+
+/**
+ * Permanently delete only a pristine Draft Challenge. Published or participated
+ * Challenges retain immutable history and are not eligible for hard deletion.
+ */
+function fc_challenge_delete_draft(PDO $pdo, int $actorUserId, int $challengeId): void
+{
+    fc_product_atomic($pdo, function () use ($pdo, $actorUserId, $challengeId): void {
+        $challenge = fc_challenge_require_owner($pdo, $actorUserId, $challengeId);
+
+        $lock = $pdo->prepare('SELECT * FROM challenges WHERE id = :id LIMIT 1 FOR UPDATE');
+        $lock->execute([':id' => $challengeId]);
+        $locked = $lock->fetch(PDO::FETCH_ASSOC);
+        if ($locked === false) {
+            throw new DomainException('Challenge is unavailable.');
+        }
+        if ((string) $locked['lifecycle_status'] !== 'DRAFT') {
+            throw new DomainException('Only an unpublished Draft Challenge can be deleted.');
+        }
+
+        $published = $pdo->prepare(
+            'SELECT COUNT(*) FROM challenge_rule_versions ' .
+            'WHERE challenge_id = :challenge_id AND version_status = \'PUBLISHED\''
+        );
+        $published->execute([':challenge_id' => $challengeId]);
+        if ((int) $published->fetchColumn() !== 0) {
+            throw new DomainException('A Challenge with published Rules cannot be deleted.');
+        }
+
+        $participations = $pdo->prepare('SELECT COUNT(*) FROM challenge_participations WHERE challenge_id = :challenge_id');
+        $participations->execute([':challenge_id' => $challengeId]);
+        if ((int) $participations->fetchColumn() !== 0) {
+            throw new DomainException('A Challenge with participant history cannot be deleted.');
+        }
+
+        fc_audit_event_write($pdo, [
+            'actor_user_id' => $actorUserId,
+            'event_type' => 'CHALLENGE_DRAFT_DELETED',
+            'target_type' => 'CHALLENGE',
+            'target_id' => (string) $challenge['public_id'],
+            'outcome' => 'SUCCESS',
+            'group_id' => (int) $challenge['crew_id'],
+        ]);
+
+        $deleteRules = $pdo->prepare(
+            'DELETE FROM challenge_rule_versions WHERE challenge_id = :challenge_id AND version_status = \'DRAFT\''
+        );
+        $deleteRules->execute([':challenge_id' => $challengeId]);
+
+        $deleteChallenge = $pdo->prepare('DELETE FROM challenges WHERE id = :challenge_id AND lifecycle_status = \'DRAFT\'');
+        $deleteChallenge->execute([':challenge_id' => $challengeId]);
+        if ($deleteChallenge->rowCount() !== 1) {
+            throw new RuntimeException('Challenge Draft deletion did not complete.');
+        }
+    });
+}
+
+function fc_challenge_delete_draft_public(PDO $pdo, int $actorUserId, string $challengePublicId): void
+{
+    $challenge = fc_challenge_require_public($pdo, $actorUserId, trim($challengePublicId));
+    fc_challenge_delete_draft($pdo, $actorUserId, (int) $challenge['id']);
 }

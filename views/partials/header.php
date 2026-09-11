@@ -17,7 +17,7 @@ $isAppHeader = $headerVariant === 'app';
                 <span class="context-label">Current context</span>
                 <strong><?= isset($appContext['crew']) && $appContext['crew'] !== null ? fc_e((string) $appContext['crew']['display_name']) : 'No Crew yet' ?></strong>
                 <span aria-hidden="true">/</span>
-                <em><?= isset($appContext['challenge']) && $appContext['challenge'] !== null ? fc_e((string) $appContext['challenge']['display_name']) : 'No Current Challenge' ?></em>
+                <em><?= isset($appContext['challenge']) && $appContext['challenge'] !== null ? fc_e((string) $appContext['challenge']['display_name']) : 'No Challenge selected' ?></em>
             </div>
         <?php endif; ?>
 

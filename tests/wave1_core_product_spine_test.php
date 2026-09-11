@@ -40,6 +40,7 @@ try {
     $owner = fc_user_create($pdo, 'Wave1 Owner');
     $member = fc_user_create($pdo, 'Wave1 Member');
     $outsider = fc_user_create($pdo, 'Wave1 Outsider');
+    $removable = fc_user_create($pdo, 'Wave1 Removable');
     $platformAdmin = fc_user_create($pdo, 'Wave1 Platform Admin', 'ACTIVE', 'PLATFORM_ADMIN');
 
     $crew = fc_crew_create($pdo, $owner['id'], 'Wave1 Test Crew', 'Private product-spine proof.');
@@ -52,8 +53,11 @@ try {
     wave1_expect_denied(fn () => fc_crew_require_member($pdo, $platformAdmin['id'], $crew['id']), 'platform role must not substitute for Crew membership');
 
     fc_crew_membership_add_existing($pdo, $owner['id'], $crew['id'], $member['id']);
+    fc_crew_membership_add_public($pdo, $owner['id'], $crew['id'], $removable['public_id']);
     $memberCrew = fc_crew_require_member($pdo, $member['id'], $crew['id']);
     wave1_assert((string) $memberCrew['membership_role'] === 'MEMBER', 'Added Crew user must be a MEMBER.');
+    $removableCrew = fc_crew_require_member($pdo, $removable['id'], $crew['id']);
+    wave1_assert((string) $removableCrew['membership_role'] === 'MEMBER', 'Public-ID Crew add must activate an existing FitCrew MEMBER.');
     wave1_expect_denied(fn () => fc_crew_membership_add_existing($pdo, $member['id'], $crew['id'], $outsider['id']), 'UI-hidden Crew Owner mutation remains server-blocked');
 
     wave1_expect_denied(
@@ -79,8 +83,15 @@ try {
     wave1_expect_denied(fn () => fc_challenge_join($pdo, $outsider['id'], $challenge['id']), 'nonmember cannot join Challenge');
 
     fc_challenge_join($pdo, $member['id'], $challenge['id']);
+    fc_challenge_join($pdo, $removable['id'], $challenge['id']);
     $memberChallenge = fc_challenge_require_access($pdo, $member['id'], $challenge['id']);
     wave1_assert((int) $memberChallenge['id'] === $challenge['id'], 'Explicit participant must gain Challenge-scoped access.');
+
+    fc_crew_membership_remove($pdo, $owner['id'], $crew['id'], $removable['id']);
+    wave1_expect_denied(fn () => fc_crew_require_member($pdo, $removable['id'], $crew['id']), 'removed Crew member must lose Crew access');
+    wave1_expect_denied(fn () => fc_challenge_require_access($pdo, $removable['id'], $challenge['id']), 'Crew removal must revoke Challenge access in that Crew');
+    $removedParticipation = fc_challenge_participation_for_user($pdo, $challenge['id'], $removable['id']);
+    wave1_assert($removedParticipation !== null && (string) $removedParticipation['participation_status'] === 'REMOVED', 'Crew removal must preserve Challenge participation history as REMOVED.');
 
     $draft = fc_challenge_rule_current_draft($pdo, $challenge['id']);
     wave1_assert($draft !== null && (int) $draft['version_number'] === 1, 'Challenge creation must establish Rule Version 1 draft.');
@@ -105,6 +116,21 @@ try {
 
     $afterPublish = fc_challenge_require_access($pdo, $owner['id'], $challenge['id']);
     wave1_assert((string) $afterPublish['lifecycle_status'] === 'FORMING_CREW', 'Initial Rule publication must move Draft to Forming Crew.');
+    try {
+        fc_challenge_delete_draft($pdo, $owner['id'], $challenge['id']);
+        throw new RuntimeException('Published Challenge was hard-deleted.');
+    } catch (DomainException) {
+        // Published/history-bearing Challenges are not eligible for hard delete.
+    }
+
+    $deletable = fc_challenge_create($pdo, $owner['id'], $crew['id'], 'Disposable Draft', [
+        'planned_start_date' => '2026-10-01',
+    ]);
+    wave1_expect_denied(fn () => fc_challenge_delete_draft($pdo, $member['id'], $deletable['id']), 'non-owner cannot delete Challenge Draft');
+    fc_challenge_delete_draft($pdo, $owner['id'], $deletable['id']);
+    $deletedChallengeCheck = $pdo->prepare('SELECT COUNT(*) FROM challenges WHERE id = :id');
+    $deletedChallengeCheck->execute([':id' => $deletable['id']]);
+    wave1_assert((int) $deletedChallengeCheck->fetchColumn() === 0, 'Pristine Draft Challenge must be deletable by its Owner.');
 
     try {
         fc_challenge_rule_save_draft($pdo, $owner['id'], $challenge['id'], (int) $published['id'], [
@@ -127,6 +153,8 @@ try {
     wave1_assert($stillPublished !== null && (int) $stillPublished['version_number'] === 1, 'Preparing a rule update must preserve current published truth.');
 
     fc_product_context_select_crew($pdo, $member['id'], $crew['id']);
+    $crewOnlyContext = fc_product_context($pdo, $member['id']);
+    wave1_assert($crewOnlyContext['challenge'] === null, 'Selecting a Crew must not silently select a Challenge.');
     fc_product_context_select_challenge($pdo, $member['id'], $challenge['id']);
     $context = fc_product_context($pdo, $member['id']);
     wave1_assert((int) $context['crew']['id'] === $crew['id'], 'Selected Crew context must persist.');

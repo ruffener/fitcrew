@@ -131,22 +131,23 @@ $lifecycleDescriptions = [
     <div class="status-action-meta"><span>Participation</span><strong><?= $participation !== null ? fc_e(ucfirst(strtolower((string) $participation['participation_status']))) : 'Not participating' ?></strong></div>
 </section>
 
-<section class="overview-grid overview-grid-three">
-    <article class="metric-card metric-card-blue"><span class="metric-label">Rules</span><strong><?= $currentRule !== null ? 'Published v' . fc_e((string) $currentRule['version_number']) : 'Draft' ?></strong><span><?= fc_e(FC_CERTIFIED_SCORING_STANDARD) ?></span></article>
-    <article class="metric-card metric-card-orange"><span class="metric-label">Participants</span><strong><?= fc_e((string) count(fc_challenge_participants($pdo, $userId, (int) $challenge['id']))) ?></strong><span>Explicit Challenge relationships</span></article>
-    <article class="metric-card metric-card-navy"><span class="metric-label">Competition truth</span><strong>Not available yet</strong><span>No score, rank, health, or Stack value is invented.</span></article>
+<?php $participantCount = count(fc_challenge_participants($pdo, $userId, (int) $challenge['id'])); ?>
+<section class="challenge-action-grid" aria-label="Challenge details">
+    <a class="challenge-action-button" href="/participants.php">
+        <span>Participants</span>
+        <strong><?= fc_e((string) $participantCount) ?></strong>
+        <small>View Challenge roster</small>
+    </a>
+    <a class="challenge-action-button" href="/rules.php">
+        <span>Rules</span>
+        <strong><?= $currentRule !== null ? 'Published v' . fc_e((string) $currentRule['version_number']) : 'Draft' ?></strong>
+        <small>Review Challenge Rules</small>
+    </a>
+    <a class="challenge-action-button" href="/health/google/status.php">
+        <span>Health readiness</span>
+        <strong>Not connected</strong>
+        <small>View Health Connections</small>
+    </a>
 </section>
 
-<section class="split-card-grid">
-    <article class="product-card">
-        <p class="card-kicker">Competition</p><h2>Official and Live results belong here.</h2><p>Standings remain unavailable until FitCrew receives authoritative Scoring output. Website will not calculate BODY_COMPOSITION_V1_0 independently.</p><span class="status-chip status-chip-neutral">Awaiting authoritative scoring</span>
-    </article>
-    <article class="product-card">
-        <p class="card-kicker">Health readiness</p><h2>Connection is not readiness.</h2><p>Future Challenge readiness will distinguish connected, measurement received, eligible, Official, and scoring result. No provider runtime is implied here.</p><a class="text-link" href="/health/google/status.php">Health Connections →</a>
-    </article>
-</section>
-
-<?php if ((int) $challenge['owner_user_id'] === $userId): ?>
-<section class="quiet-action"><div><strong>Planning another Challenge?</strong><span>Create a new Draft without changing this Challenge or its history.</span></div><a class="button button-secondary button-small" href="/challenge.php?new=1">New Challenge</a></section>
-<?php endif; ?>
 <?php endif; ?>

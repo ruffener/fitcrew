@@ -23,7 +23,7 @@ $selectedChallenge = $appContext['challenge'] ?? null;
                 <div>
                     <p class="sidebar-label">Current Crew</p>
                     <strong><?= $selectedCrew !== null ? fc_e((string) $selectedCrew['display_name']) : 'No Crew yet' ?></strong>
-                    <span><?= $selectedChallenge !== null ? fc_e((string) $selectedChallenge['display_name']) : 'No Current Challenge' ?></span>
+                    <span><?= $selectedChallenge !== null ? fc_e((string) $selectedChallenge['display_name']) : 'No Challenge selected' ?></span>
                 </div>
             </div>
 

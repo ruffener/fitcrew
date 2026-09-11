@@ -17,9 +17,10 @@ if (fc_is_post()) {
     }
 
     try {
+        $action = (string) ($_POST['action'] ?? '');
         if (fc_product_context_handle_selection($pdo, $userId, $_POST)) {
-            fc_flash('success', 'Crew context updated.');
-        } elseif (($_POST['action'] ?? '') === 'create_crew') {
+            // Choosing a Crew is normal navigation, not a success event.
+        } elseif ($action === 'create_crew') {
             $crew = fc_crew_create(
                 $pdo,
                 $userId,
@@ -28,6 +29,30 @@ if (fc_is_post()) {
             );
             fc_product_context_select_crew($pdo, $userId, (int) $crew['id']);
             fc_flash('success', 'Your Crew is ready.');
+        } elseif ($action === 'add_member') {
+            $context = fc_product_context($pdo, $userId);
+            if ($context['crew'] === null) {
+                throw new DomainException('Select a Crew before adding a member.');
+            }
+            fc_crew_membership_add_public(
+                $pdo,
+                $userId,
+                (int) $context['crew']['id'],
+                (string) ($_POST['member_public_id'] ?? '')
+            );
+            fc_flash('success', 'Crew member added.');
+        } elseif ($action === 'remove_member') {
+            $context = fc_product_context($pdo, $userId);
+            if ($context['crew'] === null) {
+                throw new DomainException('Select a Crew before removing a member.');
+            }
+            fc_crew_membership_remove_public(
+                $pdo,
+                $userId,
+                (int) $context['crew']['id'],
+                (string) ($_POST['member_public_id'] ?? '')
+            );
+            fc_flash('success', 'Crew member removed. History was preserved.');
         }
     } catch (Throwable $error) {
         fc_flash('error', $error instanceof DomainException || $error instanceof InvalidArgumentException

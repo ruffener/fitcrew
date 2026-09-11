@@ -132,3 +132,95 @@ function fc_crew_membership_add_existing(PDO $pdo, int $actorUserId, int $crewId
         ]);
     });
 }
+
+/**
+ * Owner-facing Alpha membership action using the stable FitCrew user public ID.
+ * Email/provider identity is deliberately not used as a Crew membership key.
+ */
+function fc_crew_membership_add_public(PDO $pdo, int $actorUserId, int $crewId, string $memberPublicId): void
+{
+    $memberPublicId = trim($memberPublicId);
+    if ($memberPublicId === '') {
+        throw new InvalidArgumentException('FitCrew Member ID is required.');
+    }
+
+    $lookup = $pdo->prepare('SELECT id, account_status FROM users WHERE public_id = :public_id LIMIT 1');
+    $lookup->execute([':public_id' => $memberPublicId]);
+    $member = $lookup->fetch(PDO::FETCH_ASSOC);
+    if ($member === false || (string) $member['account_status'] !== 'ACTIVE') {
+        throw new DomainException('That FitCrew member is unavailable.');
+    }
+
+    fc_crew_membership_add_existing($pdo, $actorUserId, $crewId, (int) $member['id']);
+}
+
+/**
+ * Remove a Crew member without erasing product history. Any Challenge participation
+ * within the Crew becomes REMOVED so Crew removal also revokes Challenge access.
+ */
+function fc_crew_membership_remove(PDO $pdo, int $actorUserId, int $crewId, int $memberUserId): void
+{
+    fc_product_atomic($pdo, function () use ($pdo, $actorUserId, $crewId, $memberUserId): void {
+        $crew = fc_crew_require_owner($pdo, $actorUserId, $crewId);
+        if ((int) $crew['owner_user_id'] === $memberUserId) {
+            throw new DomainException('The Crew Owner cannot be removed from the Crew.');
+        }
+
+        $membership = $pdo->prepare(
+            'SELECT id, membership_status FROM crew_memberships ' .
+            'WHERE crew_id = :crew_id AND user_id = :user_id LIMIT 1 FOR UPDATE'
+        );
+        $membership->execute([':crew_id' => $crewId, ':user_id' => $memberUserId]);
+        $row = $membership->fetch(PDO::FETCH_ASSOC);
+        if ($row === false || (string) $row['membership_status'] !== 'ACTIVE') {
+            throw new DomainException('That Crew member is not active.');
+        }
+
+        $removeMembership = $pdo->prepare(
+            'UPDATE crew_memberships SET membership_status = \'REMOVED\', removed_at = CURRENT_TIMESTAMP(6) ' .
+            'WHERE id = :id AND membership_status = \'ACTIVE\''
+        );
+        $removeMembership->execute([':id' => (int) $row['id']]);
+
+        $removeParticipations = $pdo->prepare(
+            'UPDATE challenge_participations p ' .
+            'JOIN challenges c ON c.id = p.challenge_id ' .
+            'SET p.participation_status = \'REMOVED\', p.removed_at = CURRENT_TIMESTAMP(6) ' .
+            'WHERE c.crew_id = :crew_id AND p.user_id = :user_id ' .
+            'AND p.participation_status IN (\'ACTIVE\', \'WITHDRAWN\')'
+        );
+        $removeParticipations->execute([':crew_id' => $crewId, ':user_id' => $memberUserId]);
+
+        $clearContext = $pdo->prepare(
+            'UPDATE user_product_contexts SET selected_crew_id = NULL, selected_challenge_id = NULL ' .
+            'WHERE user_id = :user_id AND selected_crew_id = :crew_id'
+        );
+        $clearContext->execute([':user_id' => $memberUserId, ':crew_id' => $crewId]);
+
+        fc_audit_event_write($pdo, [
+            'actor_user_id' => $actorUserId,
+            'event_type' => 'CREW_MEMBERSHIP_REMOVED',
+            'target_type' => 'USER',
+            'target_id' => (string) $memberUserId,
+            'outcome' => 'SUCCESS',
+            'group_id' => $crewId,
+        ]);
+    });
+}
+
+function fc_crew_membership_remove_public(PDO $pdo, int $actorUserId, int $crewId, string $memberPublicId): void
+{
+    $memberPublicId = trim($memberPublicId);
+    if ($memberPublicId === '') {
+        throw new InvalidArgumentException('Crew member is required.');
+    }
+
+    $lookup = $pdo->prepare('SELECT id FROM users WHERE public_id = :public_id LIMIT 1');
+    $lookup->execute([':public_id' => $memberPublicId]);
+    $memberUserId = $lookup->fetchColumn();
+    if ($memberUserId === false) {
+        throw new DomainException('Crew member is unavailable.');
+    }
+
+    fc_crew_membership_remove($pdo, $actorUserId, $crewId, (int) $memberUserId);
+}

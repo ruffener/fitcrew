@@ -31,9 +31,6 @@ function fc_product_context(PDO $pdo, int $userId): array
             break;
         }
     }
-    if ($challenge === null && $challenges !== []) {
-        $challenge = $challenges[0];
-    }
 
     $resolvedCrewId = $crew !== null ? (int) $crew['id'] : null;
     $resolvedChallengeId = $challenge !== null ? (int) $challenge['id'] : null;
@@ -62,9 +59,9 @@ function fc_product_context_persist(PDO $pdo, int $userId, ?int $crewId, ?int $c
 function fc_product_context_select_crew(PDO $pdo, int $userId, int $crewId): void
 {
     fc_crew_require_member($pdo, $userId, $crewId);
-    $challenges = fc_challenges_for_user($pdo, $userId, $crewId);
-    $challengeId = $challenges !== [] ? (int) $challenges[0]['id'] : null;
-    fc_product_context_persist($pdo, $userId, $crewId, $challengeId);
+    // Selecting a Crew chooses the Crew only. A Challenge remains unselected until
+    // the user explicitly opens one from Overview, Crew, or the Challenge list.
+    fc_product_context_persist($pdo, $userId, $crewId, null);
 }
 
 function fc_product_context_select_challenge(PDO $pdo, int $userId, int $challengeId): void

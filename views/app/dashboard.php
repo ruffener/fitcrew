@@ -41,9 +41,6 @@ $isCrewOwner = (string) $crew['membership_role'] === 'OWNER';
             <h2 id="overview-challenges-title">Choose your competition.</h2>
             <p>Each Challenge keeps its own lifecycle, participation, rules, and results in one place.</p>
         </div>
-        <?php if ($isCrewOwner): ?>
-            <a class="button button-secondary button-small" href="/challenge.php?new=1">Create Challenge</a>
-        <?php endif; ?>
     </div>
 
     <?php if ($crewChallenges === []): ?>
@@ -52,16 +49,13 @@ $isCrewOwner = (string) $crew['membership_role'] === 'OWNER';
                 <strong>No Challenge yet.</strong>
                 <span><?= $isCrewOwner ? 'Create the first Challenge when your Crew is ready.' : 'Your Crew Owner has not created a Challenge yet.' ?></span>
             </div>
-            <?php if ($isCrewOwner): ?>
-                <a class="button button-primary" href="/challenge.php?new=1">Create Challenge</a>
-            <?php endif; ?>
+            <a class="button button-secondary" href="/challenge.php">Open Challenge List</a>
         </div>
     <?php else: ?>
         <div class="overview-challenge-list">
             <?php foreach ($crewChallenges as $crewChallenge): ?>
                 <?php
                 $challengeId = (int) $crewChallenge['id'];
-                $isCurrent = $challenge !== null && $challengeId === (int) $challenge['id'];
                 $hasAccess = fc_challenge_user_has_access($pdo, (int) $currentUser['user_id'], $challengeId);
                 $participation = $hasAccess ? fc_challenge_participation_for_user($pdo, $challengeId, (int) $currentUser['user_id']) : null;
                 $challengeOwner = (int) $crewChallenge['owner_user_id'] === (int) $currentUser['user_id'];
@@ -83,9 +77,8 @@ $isCrewOwner = (string) $crew['membership_role'] === 'OWNER';
                     ? 'Join to view'
                     : ($currentRule !== null ? 'Published v' . (string) $currentRule['version_number'] : 'Not published');
                 ?>
-                <article class="overview-challenge-card<?= $isCurrent ? ' is-current' : '' ?>">
+                <article class="overview-challenge-card">
                     <div class="overview-challenge-title">
-                        <?php if ($isCurrent): ?><span class="current-challenge-label">Current Challenge</span><?php endif; ?>
                         <h3><?= fc_e((string) $crewChallenge['display_name']) ?></h3>
                         <p><?= fc_e((string) $crew['display_name']) ?> · <?= fc_e((string) $crewChallenge['participant_count']) ?> active <?= (int) $crewChallenge['participant_count'] === 1 ? 'participant' : 'participants' ?></p>
                     </div>

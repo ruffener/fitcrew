@@ -16,10 +16,19 @@ if (fc_is_post()) {
         exit('Forbidden');
     }
 
+    $redirectTo = '/challenge.php';
+
     try {
+        $action = (string) ($_POST['action'] ?? '');
+
         if (fc_product_context_handle_selection($pdo, $userId, $_POST)) {
-            // Selecting a Challenge is normal navigation, not a success event.
-        } elseif (($_POST['action'] ?? '') === 'create_challenge') {
+            $redirectTo = '/challenge.php?view=detail';
+        } elseif ($action === 'prepare_new_challenge') {
+            $crew = fc_crew_require_public($pdo, $userId, (string) ($_POST['crew_public_id'] ?? ''));
+            fc_crew_require_owner($pdo, $userId, (int) $crew['id']);
+            fc_product_context_select_crew($pdo, $userId, (int) $crew['id']);
+            $redirectTo = '/challenge.php?new=1';
+        } elseif ($action === 'create_challenge') {
             $context = fc_product_context($pdo, $userId);
             if ($context['crew'] === null) {
                 throw new DomainException('Create or select a Crew before creating a Challenge.');
@@ -34,7 +43,7 @@ if (fc_is_post()) {
             ]);
             fc_product_context_select_challenge($pdo, $userId, (int) $challenge['id']);
             fc_redirect('/rules.php');
-        } elseif (($_POST['action'] ?? '') === 'join_challenge') {
+        } elseif ($action === 'join_challenge') {
             $publicId = trim((string) ($_POST['challenge_public_id'] ?? ''));
             $lookup = $pdo->prepare('SELECT id, crew_id FROM challenges WHERE public_id = :public_id LIMIT 1');
             $lookup->execute([':public_id' => $publicId]);
@@ -46,6 +55,11 @@ if (fc_is_post()) {
             fc_challenge_join($pdo, $userId, (int) $candidate['id']);
             fc_product_context_select_challenge($pdo, $userId, (int) $candidate['id']);
             fc_flash('success', 'You joined this Challenge.');
+            $redirectTo = '/challenge.php?view=detail';
+        } elseif ($action === 'delete_challenge_draft') {
+            fc_challenge_delete_draft_public($pdo, $userId, (string) ($_POST['challenge_public_id'] ?? ''));
+            fc_flash('success', 'Draft Challenge deleted.');
+            $redirectTo = '/challenge.php';
         }
     } catch (Throwable $error) {
         fc_flash('error', $error instanceof DomainException || $error instanceof InvalidArgumentException
@@ -53,19 +67,27 @@ if (fc_is_post()) {
             : 'FitCrew could not complete that Challenge action.');
     }
 
-    fc_redirect('/challenge.php');
+    fc_redirect($redirectTo);
 }
 
 $appContext = fc_product_context($pdo, $userId);
 $crew = $appContext['crew'];
 $challenge = $appContext['challenge'];
-$crewChallenges = $crew !== null ? fc_challenge_summaries_for_crew($pdo, $userId, (int) $crew['id']) : [];
-$participation = $challenge !== null ? fc_challenge_participation_for_user($pdo, (int) $challenge['id'], $userId) : null;
-$currentRule = $challenge !== null ? fc_challenge_rule_current_published($pdo, (int) $challenge['id']) : null;
-$draftRule = $challenge !== null ? fc_challenge_rule_current_draft($pdo, (int) $challenge['id']) : null;
+$allChallenges = fc_challenges_for_user($pdo, $userId);
 $showCreateChallenge = isset($_GET['new']) && $_GET['new'] === '1' && $crew !== null && (string) $crew['membership_role'] === 'OWNER';
+$showChallengeDetail = isset($_GET['view']) && $_GET['view'] === 'detail' && $challenge !== null;
+
 $appSection = 'challenge';
-$challengeSection = 'home';
 $title = 'Challenge';
-$contentView = 'views/app/challenge/home.php';
+
+if ($showChallengeDetail) {
+    $participation = fc_challenge_participation_for_user($pdo, (int) $challenge['id'], $userId);
+    $currentRule = fc_challenge_rule_current_published($pdo, (int) $challenge['id']);
+    $draftRule = fc_challenge_rule_current_draft($pdo, (int) $challenge['id']);
+    $challengeSection = 'home';
+    $contentView = 'views/app/challenge/home.php';
+} else {
+    $contentView = 'views/app/challenge/index.php';
+}
+
 require fc_path('views/layouts/app.php');
