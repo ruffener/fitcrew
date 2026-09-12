@@ -1,8 +1,8 @@
 # Phase 2A4 — Microsoft Authentication
 
-Status: **AUTHORIZED / implementation candidate pending proof**
+Status: **ACCEPTED / COMPLETE / PRODUCTION PROVEN / CONSUMER VISIBILITY DEFERRED**
 
-Phase 2A4 adds Microsoft as the second live FitCrew federated authentication provider while preserving the accepted provider-neutral Phase 2A2 identity/session foundation and the production-proven Google provider.
+Phase 2A4 retains Microsoft as a production-proven FitCrew federated authentication capability while preserving the accepted provider-neutral Phase 2A2 identity/session foundation and the production-proven Google provider. Governance has deferred ordinary consumer visibility for Family Alpha.
 
 ## Scope
 
@@ -71,6 +71,7 @@ Environment-only configuration:
 
 ```text
 MICROSOFT_AUTH_ENABLED
+MICROSOFT_AUTH_CONSUMER_VISIBLE
 MICROSOFT_AUTH_CLIENT_ID
 MICROSOFT_AUTH_CLIENT_SECRET
 MICROSOFT_AUTH_REDIRECT_URI
@@ -78,6 +79,8 @@ PRELAUNCH_MICROSOFT_ALLOWED_IDENTITIES
 ```
 
 Secret values never belong in Git, documentation examples with real values, audit events, or test fixtures.
+
+`MICROSOFT_AUTH_ENABLED` controls whether valid Microsoft runtime configuration is active. `MICROSOFT_AUTH_CONSUMER_VISIBLE` separately controls ordinary consumer availability and defaults to `false`. While visibility is deferred, the login choice is not rendered and direct initiation is rejected; the implementation, identity model, tests, and production-proof history remain intact.
 
 Token-endpoint failures are reduced to fixed local audit classifications:
 
@@ -299,4 +302,4 @@ Any discovered schema need requires Governance return before a migration is auth
 
 ## Exclusions
 
-Phase 2A4 does not implement Apple authentication, Graph product functionality, account linking/unlinking/merge, passkeys, passwords, magic links, Google Health authorization, health imports, Crew/Challenge behavior, scoring, Challenge Monies, payments, billing, or deployment-transport redesign.
+Phase 2A4 does not implement Apple authentication, Graph product functionality, account linking/unlinking/merge, passkeys, passwords, magic links, Google Health authorization, health imports, Crew/Challenge behavior, scoring, Challenge Monies, payments, billing, or deployment-transport redesign. Microsoft consumer visibility is deferred without removing the provider implementation.

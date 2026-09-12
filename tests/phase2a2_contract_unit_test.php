@@ -66,7 +66,9 @@ try {
 
     $governance = (string) file_get_contents(dirname(__DIR__) . '/docs/governance_decisions.md');
     foreach ([
-        'GOOGLE / APPLE / MICROSOFT',
+        'GOOGLE / APPLE',
+        'Phase 2A4 — ACCEPTED / COMPLETE / PRODUCTION PROVEN',
+        'Microsoft consumer visibility | DEFERRED / CONFIGURATION-CONTROLLED',
         'FEDERATED / PASSWORDLESS FIRST',
         'SUPERSEDED',
         'Health Data Architecture v1.0',
@@ -97,7 +99,11 @@ try {
     fc_unit_assert(
         $googlePosition !== false && $applePosition !== false && $microsoftPosition !== false
         && $googlePosition < $applePosition && $applePosition < $microsoftPosition,
-        'Account-entry provider order must be Google → Apple → Microsoft.'
+        'Retained account-entry source order must remain Google → Apple → Microsoft.'
+    );
+    fc_unit_assert(
+        str_contains($accountEntry, 'if ($microsoftVisible)'),
+        'Microsoft account-entry choice is not protected by consumer visibility.'
     );
 
     echo "Phase 2A2 contract unit proof: PASS\n";
@@ -109,7 +115,7 @@ try {
     echo "- protected PKCE secret encryption/decryption: PASS\n";
     echo "- governance decision reconciliation: PASS\n";
     echo "- auth-transaction secret configuration contract: PASS\n";
-    echo "- account-entry provider order Google → Apple → Microsoft: PASS\n";
+    echo "- visible providers Google → Apple / retained Microsoft visibility control: PASS\n";
     exit(0);
 } catch (Throwable $error) {
     fwrite(STDERR, '[FAIL] ' . $error->getMessage() . PHP_EOL);

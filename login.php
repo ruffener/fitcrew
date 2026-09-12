@@ -18,6 +18,7 @@ $googleAuthConfig = [
     'reason' => 'Google authentication setup is not complete yet.',
 ];
 $microsoftAuthConfig = [
+    'visible' => fc_microsoft_auth_consumer_visible(),
     'enabled' => false,
     'reason' => 'Microsoft authentication setup is not complete yet.',
 ];
@@ -43,13 +44,14 @@ if (fc_google_auth_enabled()) {
 }
 
 
-if (fc_microsoft_auth_enabled()) {
+if (fc_microsoft_auth_consumer_available()) {
     $microsoftAuthConfig = [
+        'visible' => true,
         'enabled' => true,
         'csrf_token' => fc_csrf_token(),
         'start_endpoint' => '/auth/microsoft/start.php',
     ];
-} else {
+} elseif ((bool) $microsoftAuthConfig['visible']) {
     $configured = fc_microsoft_auth_config();
     if ((bool) ($configured['enabled'] ?? false)) {
         $microsoftAuthConfig['reason'] = 'Microsoft authentication configuration is incomplete.';

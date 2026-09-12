@@ -95,9 +95,8 @@ try {
 
     $loginView = file_get_contents(fc_path('views/auth/login.php')) ?: '';
     fc_test_assert(
-        strpos($loginView, 'Continue with Google') < strpos($loginView, 'Continue with Apple')
-        && strpos($loginView, 'Continue with Apple') < strpos($loginView, 'Continue with Microsoft'),
-        'account-entry provider order is not Google → Apple → Microsoft'
+        strpos($loginView, 'Continue with Google') < strpos($loginView, 'Continue with Apple'),
+        'visible consumer provider order is not Google → Apple'
     );
 
     $providerSource = (file_get_contents(fc_path('inc/auth/google.php')) ?: '')

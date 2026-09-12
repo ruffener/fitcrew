@@ -41,6 +41,16 @@ function fc_microsoft_auth_enabled(): bool
     }
 }
 
+function fc_microsoft_auth_consumer_visible(): bool
+{
+    return (bool) fc_env('MICROSOFT_AUTH_CONSUMER_VISIBLE', false);
+}
+
+function fc_microsoft_auth_consumer_available(): bool
+{
+    return fc_microsoft_auth_consumer_visible() && fc_microsoft_auth_enabled();
+}
+
 /** @param array{enabled:bool,client_id:string,client_secret:string,redirect_uri:string} $config */
 function fc_microsoft_validate_runtime_config(array $config): void
 {

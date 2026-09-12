@@ -276,8 +276,9 @@ try {
     $microsoft = strpos($accountEntry, 'Continue with Microsoft');
     fc_recon_assert(
         $google !== false && $apple !== false && $microsoft !== false && $google < $apple && $apple < $microsoft,
-        'Account-entry provider order is not Google → Apple → Microsoft.'
+        'Retained account-entry source order is not Google → Apple → Microsoft.'
     );
+    fc_recon_assert(str_contains($accountEntry, 'if ($microsoftVisible)'), 'Microsoft account-entry choice is not visibility-controlled.');
 
     $pdo->rollBack();
 
@@ -289,7 +290,7 @@ try {
     echo "- wrong stored PKCE verifier hash rejection: PASS\n";
     echo "- consumed / expired PKCE verifier unavailable: PASS\n";
     echo "- raw PKCE verifier / envelope / secret key absent from audit output: PASS\n";
-    echo "- account-entry order Google → Apple → Microsoft: PASS\n";
+    echo "- visible providers Google → Apple / retained Microsoft visibility control: PASS\n";
     exit(0);
 } catch (Throwable $error) {
     if ($pdo->inTransaction()) {

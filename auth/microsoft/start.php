@@ -11,7 +11,7 @@ if (!fc_is_post()) {
     exit('Method not allowed.');
 }
 
-if (!fc_microsoft_auth_enabled()) {
+if (!fc_microsoft_auth_consumer_available()) {
     fc_flash('notice', 'Microsoft sign-in is not currently available.');
     fc_redirect('/login.php');
 }

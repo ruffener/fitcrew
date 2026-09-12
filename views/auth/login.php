@@ -1,6 +1,7 @@
 <?php
 $isCreateIntent = ($entryIntent ?? 'signin') === 'create';
 $googleEnabled = (bool) ($googleAuthConfig['enabled'] ?? false);
+$microsoftVisible = (bool) ($microsoftAuthConfig['visible'] ?? false);
 $microsoftEnabled = (bool) ($microsoftAuthConfig['enabled'] ?? false);
 ?>
 <section class="auth-card account-entry-card">
@@ -46,27 +47,29 @@ $microsoftEnabled = (bool) ($microsoftAuthConfig['enabled'] ?? false);
             </span>
             <span class="provider-status">Planned</span>
         </button>
-        <?php if ($microsoftEnabled): ?>
-            <form class="microsoft-provider-form" method="post" action="<?= fc_e((string) $microsoftAuthConfig['start_endpoint']) ?>">
-                <input type="hidden" name="csrf_token" value="<?= fc_e((string) $microsoftAuthConfig['csrf_token']) ?>">
-                <button class="provider-choice" type="submit">
-                    <span class="provider-mark provider-mark-microsoft" aria-hidden="true">M</span>
+        <?php if ($microsoftVisible): ?>
+            <?php if ($microsoftEnabled): ?>
+                <form class="microsoft-provider-form" method="post" action="<?= fc_e((string) $microsoftAuthConfig['start_endpoint']) ?>">
+                    <input type="hidden" name="csrf_token" value="<?= fc_e((string) $microsoftAuthConfig['csrf_token']) ?>">
+                    <button class="provider-choice" type="submit">
+                        <span class="provider-mark provider-mark-microsoft" aria-hidden="true">M</span>
+                        <span class="provider-choice-copy">
+                            <strong>Continue with Microsoft</strong>
+                            <small>Personal and work/school Microsoft accounts</small>
+                        </span>
+                        <span class="provider-status">Available</span>
+                    </button>
+                </form>
+            <?php else: ?>
+                <button class="provider-choice" type="button" disabled>
+                    <span class="provider-mark" aria-hidden="true">M</span>
                     <span class="provider-choice-copy">
                         <strong>Continue with Microsoft</strong>
-                        <small>Personal and work/school Microsoft accounts</small>
+                        <small><?= fc_e((string) ($microsoftAuthConfig['reason'] ?? 'Authentication setup required')) ?></small>
                     </span>
-                    <span class="provider-status">Available</span>
+                    <span class="provider-status">Setup required</span>
                 </button>
-            </form>
-        <?php else: ?>
-            <button class="provider-choice" type="button" disabled>
-                <span class="provider-mark" aria-hidden="true">M</span>
-                <span class="provider-choice-copy">
-                    <strong>Continue with Microsoft</strong>
-                    <small><?= fc_e((string) ($microsoftAuthConfig['reason'] ?? 'Authentication setup required')) ?></small>
-                </span>
-                <span class="provider-status">Setup required</span>
-            </button>
+            <?php endif; ?>
         <?php endif; ?>
     </div>
 

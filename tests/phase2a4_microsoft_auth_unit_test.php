@@ -29,6 +29,7 @@ try {
     $_ENV['MICROSOFT_AUTH_CLIENT_ID'] = '11111111-2222-3333-4444-555555555555';
     $_ENV['MICROSOFT_AUTH_CLIENT_SECRET'] = 'unit-test-secret-not-a-real-credential';
     $_ENV['MICROSOFT_AUTH_REDIRECT_URI'] = 'https://fitcrewchallenge.com/auth/microsoft/callback.php';
+    $_ENV['MICROSOFT_AUTH_CONSUMER_VISIBLE'] = 'false';
     $_ENV['PRELAUNCH_AUTH_PROOF_MODE'] = 'true';
 
     $tenantId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
@@ -43,6 +44,10 @@ try {
     fc_ms_test_assert(fc_microsoft_auth_enabled() === false, 'Microsoft auth unexpectedly enabled without MICROSOFT_AUTH_ENABLED=true');
     $_ENV['MICROSOFT_AUTH_ENABLED'] = 'true';
     fc_ms_test_assert(fc_microsoft_auth_enabled(), 'valid Microsoft runtime configuration was not enabled');
+    fc_ms_test_assert(!fc_microsoft_auth_consumer_visible(), 'Microsoft consumer visibility was not default-off');
+    fc_ms_test_assert(!fc_microsoft_auth_consumer_available(), 'hidden Microsoft provider was consumer-available');
+    $_ENV['MICROSOFT_AUTH_CONSUMER_VISIBLE'] = 'true';
+    fc_ms_test_assert(fc_microsoft_auth_consumer_available(), 'visible enabled Microsoft provider was not consumer-available');
 
     $verifier = fc_microsoft_pkce_verifier();
     fc_ms_test_assert(strlen($verifier) >= 43 && strlen($verifier) <= 128, 'PKCE verifier length invalid');
@@ -319,12 +324,28 @@ PEM;
     fc_ms_test_assert(!fc_microsoft_request_origin_valid('null'), 'Microsoft opaque-origin request was accepted');
     fc_ms_test_assert(!fc_microsoft_request_origin_valid('https://evil.example'), 'Microsoft wrong-origin request was accepted');
 
+    $loginController = file_get_contents(fc_path('login.php')) ?: '';
     $loginView = file_get_contents(fc_path('views/auth/login.php')) ?: '';
     fc_ms_test_assert(
-        strpos($loginView, 'Continue with Google') < strpos($loginView, 'Continue with Apple')
-        && strpos($loginView, 'Continue with Apple') < strpos($loginView, 'Continue with Microsoft'),
-        'account-entry provider order is not Google → Apple → Microsoft'
+        strpos($loginView, 'Continue with Google') < strpos($loginView, 'Continue with Apple'),
+        'visible consumer provider order is not Google → Apple'
     );
+    fc_ms_test_assert(strpos($loginController, 'fc_microsoft_auth_consumer_available()') !== false, 'login controller bypasses Microsoft consumer-visibility control');
+    fc_ms_test_assert(strpos($loginView, 'if ($microsoftVisible)') !== false, 'Microsoft login choice is not guarded by consumer visibility');
+
+    $entryIntent = 'signin';
+    $googleAuthConfig = ['enabled' => false, 'reason' => 'Unit-test placeholder'];
+    $microsoftAuthConfig = ['visible' => false, 'enabled' => true];
+    ob_start();
+    require fc_path('views/auth/login.php');
+    $hiddenLoginHtml = (string) ob_get_clean();
+    fc_ms_test_assert(!str_contains($hiddenLoginHtml, 'Continue with Microsoft'), 'hidden Microsoft provider was rendered to consumers');
+
+    $microsoftAuthConfig = ['visible' => true, 'enabled' => false, 'reason' => 'Unit-test placeholder'];
+    ob_start();
+    require fc_path('views/auth/login.php');
+    $visibleLoginHtml = (string) ob_get_clean();
+    fc_ms_test_assert(str_contains($visibleLoginHtml, 'Continue with Microsoft'), 'visible Microsoft provider was not rendered');
 
     $microsoftSource = '';
     foreach ([
@@ -336,6 +357,7 @@ PEM;
         $microsoftSource .= file_get_contents(fc_path($path)) ?: '';
     }
     fc_ms_test_assert(strpos($microsoftSource, "'response_type' => 'code'") !== false, 'Microsoft auth code flow is absent');
+    fc_ms_test_assert(strpos($microsoftSource, 'fc_microsoft_auth_consumer_available()') !== false, 'direct Microsoft initiation is not blocked while consumer visibility is deferred');
     fc_ms_test_assert(strpos($microsoftSource, "'response_mode' => 'form_post'") !== false, 'Microsoft form_post code-return protection is absent');
     fc_ms_test_assert(strpos($microsoftSource, "'code_challenge_method' => 'S256'") !== false, 'Microsoft PKCE S256 is absent');
     fc_ms_test_assert(stripos($microsoftSource, 'google health') === false, 'Microsoft auth source crossed Google Health boundary');
@@ -378,7 +400,7 @@ PEM;
     echo "- tid+oid prelaunch gate / email cannot bypass gate: PASS\n";
     echo "- no offline_access / Microsoft Graph scope: PASS\n";
     echo "- form_post bridge preserves concrete Origin + SameSite=Lax browser binding: PASS\n";
-    echo "- Google → Apple → Microsoft UI order: PASS\n";
+    echo "- Google → Apple visible consumer order / Microsoft visibility gate: PASS\n";
     echo "- no Microsoft token/code/client-secret persistence columns: PASS\n";
     echo "- Microsoft secret redaction coverage: PASS\n";
     echo "- safe token-endpoint failure classification / raw detail discard: PASS\n";
