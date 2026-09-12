@@ -6,6 +6,7 @@ require_once __DIR__ . '/inc/bootstrap.php';
 require_once __DIR__ . '/inc/product/bootstrap.php';
 
 fc_require_login();
+header('Cache-Control: private, no-store');
 $currentUser = fc_current_user();
 $userId = (int) $currentUser['user_id'];
 $pdo = fc_db();
@@ -29,11 +30,8 @@ if (fc_is_post()) {
             fc_product_context_select_crew($pdo, $userId, (int) $crew['id']);
             $redirectTo = '/challenge.php?new=1';
         } elseif ($action === 'create_challenge') {
-            $context = fc_product_context($pdo, $userId);
-            if ($context['crew'] === null) {
-                throw new DomainException('Create or select a Crew before creating a Challenge.');
-            }
-            $challenge = fc_challenge_create($pdo, $userId, (int) $context['crew']['id'], (string) ($_POST['display_name'] ?? ''), [
+            $targetCrew = fc_crew_require_public($pdo, $userId, (string) ($_POST['crew_public_id'] ?? ''));
+            $challenge = fc_challenge_create($pdo, $userId, (int) $targetCrew['id'], (string) ($_POST['display_name'] ?? ''), [
                 'planned_start_date' => $_POST['planned_start_date'] ?? null,
                 'planned_end_date' => $_POST['planned_end_date'] ?? null,
                 'duration_days' => (int) ($_POST['duration_days'] ?? 84),
@@ -45,17 +43,9 @@ if (fc_is_post()) {
             fc_redirect('/rules.php');
         } elseif ($action === 'join_challenge') {
             $publicId = trim((string) ($_POST['challenge_public_id'] ?? ''));
-            $lookup = $pdo->prepare('SELECT id, crew_id FROM challenges WHERE public_id = :public_id LIMIT 1');
-            $lookup->execute([':public_id' => $publicId]);
-            $candidate = $lookup->fetch(PDO::FETCH_ASSOC);
-            if ($candidate === false) {
-                throw new DomainException('Challenge is unavailable.');
-            }
-            fc_crew_require_member($pdo, $userId, (int) $candidate['crew_id']);
-            fc_challenge_join($pdo, $userId, (int) $candidate['id']);
-            fc_product_context_select_challenge($pdo, $userId, (int) $candidate['id']);
-            fc_flash('success', 'You joined this Challenge.');
-            $redirectTo = '/challenge.php?view=detail';
+            $candidateId = fc_family_challenge_id($pdo, $publicId);
+            fc_challenge_personal_context($pdo, $userId, $candidateId);
+            $redirectTo = '/participation.php?challenge=' . rawurlencode($publicId);
         } elseif ($action === 'delete_challenge_draft') {
             fc_challenge_delete_draft_public($pdo, $userId, (string) ($_POST['challenge_public_id'] ?? ''));
             fc_flash('success', 'Draft Challenge deleted.');
@@ -73,7 +63,17 @@ if (fc_is_post()) {
 $appContext = fc_product_context($pdo, $userId);
 $crew = $appContext['crew'];
 $challenge = $appContext['challenge'];
-$allChallenges = fc_challenges_for_user($pdo, $userId);
+if (isset($_GET['challenge']) && ($_GET['view'] ?? '') === 'detail') {
+    try {
+        $challenge = fc_challenge_require_public($pdo, $userId, (string) $_GET['challenge']);
+        $crew = fc_crew_require_member($pdo, $userId, (int) $challenge['crew_id']);
+        $appContext['crew'] = $crew;
+        $appContext['challenge'] = $challenge;
+    } catch (DomainException) { fc_response_code(404); exit('Challenge is unavailable.'); }
+}
+$showHistory = ($_GET['show'] ?? '') === 'history';
+$allChallenges = fc_challenges_for_user($pdo, $userId, null, $showHistory);
+$personalChallenges = fc_challenge_personal_list($pdo, $userId);
 $showCreateChallenge = isset($_GET['new']) && $_GET['new'] === '1' && $crew !== null && (string) $crew['membership_role'] === 'OWNER';
 $showChallengeDetail = isset($_GET['view']) && $_GET['view'] === 'detail' && $challenge !== null;
 
@@ -81,8 +81,13 @@ $appSection = 'challenge';
 $title = 'Challenge';
 
 if ($showChallengeDetail) {
+    $management = fc_challenge_management_state($pdo, (int) $challenge['id']);
     $participation = fc_challenge_participation_for_user($pdo, (int) $challenge['id'], $userId);
     $currentRule = fc_challenge_rule_current_published($pdo, (int) $challenge['id']);
+    $acceptanceQuery = $pdo->prepare('SELECT rule_version_id FROM challenge_acceptance_records WHERE challenge_id=:c AND user_id=:u ORDER BY id DESC LIMIT 1');
+    $acceptanceQuery->execute([':c'=>(int)$challenge['id'], ':u'=>$userId]);
+    $acceptedRuleId = $acceptanceQuery->fetchColumn();
+    $personalAcceptanceNeeded = $currentRule !== null && $participation !== null && $participation['participation_status'] === 'ACTIVE' && ($acceptedRuleId === false || (int)$acceptedRuleId !== (int)$currentRule['id']);
     $draftRule = fc_challenge_rule_current_draft($pdo, (int) $challenge['id']);
     $challengeSection = 'home';
     $contentView = 'views/app/challenge/home.php';

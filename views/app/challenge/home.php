@@ -35,7 +35,7 @@ $lifecycleDescriptions = [
 ?>
 <?php require fc_path('views/app/challenge/subnav.php'); ?>
 <section class="product-hero challenge-hero">
-    <div><p class="eyebrow"><?= fc_e((string) $crew['display_name']) ?></p><h1><?= fc_e((string) $challenge['display_name']) ?></h1><p>One governed competition, one current place to look.</p></div>
+    <div><p class="eyebrow"><?= fc_e((string) $crew['display_name']) ?></p><h1><?= fc_e((string) $challenge['display_name']) ?></h1><p>Your competition. Your people. Your next step.</p></div>
     <button
         class="lifecycle-badge lifecycle-badge-button"
         type="button"
@@ -71,6 +71,7 @@ $lifecycleDescriptions = [
         </header>
 
         <div class="fc-modal-body">
+            <?php if (fc_challenge_management_label($management) !== 'Current'): ?><div class="family-notice"><strong><?= fc_e(fc_challenge_management_label($management)) ?></strong><p>The stages below explain the competitive lifecycle; they do not promise that this Challenge will advance or produce a final result.</p></div><?php endif; ?>
             <?php if (strtoupper((string) $challenge['operational_state']) === 'NEEDS_ATTENTION'): ?>
                 <div class="lifecycle-attention">
                     <strong>Needs attention</strong>
@@ -104,8 +105,8 @@ $lifecycleDescriptions = [
             </ol>
 
             <div class="fc-modal-note">
-                <strong>Lifecycle shows where the Challenge is.</strong>
-                <span>“Needs Attention” is an operational alert, not a separate lifecycle stage.</span>
+                <strong>Lifecycle and Owner controls are separate.</strong>
+                <span>Ending, archiving or deleting a Challenge does not mark later competitive stages complete. “Needs Attention” is an alert, not another stage.</span>
             </div>
         </div>
     </div>
@@ -115,31 +116,35 @@ $lifecycleDescriptions = [
     <div class="status-action-marker" aria-hidden="true"><?= (string) $challenge['lifecycle_status'] === 'DRAFT' ? '1' : '✓' ?></div>
     <div>
         <p class="card-kicker">Current status</p>
-        <?php if ((string) $challenge['lifecycle_status'] === 'DRAFT'): ?>
+        <?php if (fc_challenge_management_label($management) !== 'Current'): ?>
+            <h2><?= fc_e(fc_challenge_management_label($management)) ?>.</h2><p>Owner management has been recorded separately from the competitive lifecycle. It does not declare a final result or erase participant rights.</p>
+        <?php elseif ((string) $challenge['lifecycle_status'] === 'DRAFT'): ?>
             <h2>Review the Challenge Rules.</h2><p>This Challenge is still a draft. Publish Rule Version 1 before the Crew moves into Forming Crew.</p>
-            <?php if ((int) $challenge['owner_user_id'] === $userId): ?><a class="button button-primary button-small" href="/rules.php">Review Rules</a><?php else: ?><span class="status-chip status-chip-neutral">Waiting for Challenge Owner</span><?php endif; ?>
+            <?php if ((int) $challenge['owner_user_id'] === $userId): ?><a class="button button-primary button-small" href="/rules.php?challenge=<?= fc_e(rawurlencode((string)$challenge['public_id'])) ?>">Review Rules</a><?php else: ?><span class="status-chip status-chip-neutral">Waiting for Challenge Owner</span><?php endif; ?>
         <?php elseif ($participation === null || (string) $participation['participation_status'] !== 'ACTIVE'): ?>
             <?php if ((int) $challenge['owner_user_id'] === $userId): ?>
                 <h2>Owner and participant are separate.</h2><p>You own this Challenge but are not currently an active participant.</p><form method="post" action="/challenge.php"><?= fc_csrf_input() ?><input type="hidden" name="action" value="join_challenge"><input type="hidden" name="challenge_public_id" value="<?= fc_e((string) $challenge['public_id']) ?>"><button class="button button-secondary button-small" type="submit">Join This Challenge</button></form>
             <?php else: ?>
                 <h2>Participation is not active.</h2><p>Your Crew membership remains separate from Challenge participation.</p>
             <?php endif; ?>
+        <?php elseif (!empty($personalAcceptanceNeeded)): ?>
+            <h2>Review your participation choices.</h2><p>Your participation is saved. Please review the current Rules and confirm your personal acceptance. Your privacy choices remain yours to change separately.</p><a class="button button-primary button-small" href="/participation.php?challenge=<?= fc_e(rawurlencode((string)$challenge['public_id'])) ?>">Review my participation</a>
         <?php else: ?>
-            <h2>No action needed.</h2><p>You’re an active participant. The next governed action will appear here when an authorized downstream service supplies it.</p>
+            <h2>No action needed.</h2><p>You are participating. Your next check-in or result will appear here when those features are available.</p>
         <?php endif; ?>
     </div>
     <div class="status-action-meta"><span>Participation</span><strong><?= $participation !== null ? fc_e(ucfirst(strtolower((string) $participation['participation_status']))) : 'Not participating' ?></strong></div>
 </section>
 
-<?php $participantCount = count(fc_challenge_participants($pdo, $userId, (int) $challenge['id'])); ?>
+<?php $participantCount = count(array_filter(fc_challenge_participants($pdo, $userId, (int) $challenge['id']),static fn(array $p):bool=>$p['participation_status']==='ACTIVE')); ?>
 <section class="challenge-action-grid" aria-label="Challenge details">
-    <a class="challenge-action-button fc-action-tile" href="/participants.php">
+    <a class="challenge-action-button fc-action-tile" href="/participants.php?challenge=<?= fc_e(rawurlencode((string)$challenge['public_id'])) ?>">
         <span>Participants</span>
         <strong><?= fc_e((string) $participantCount) ?></strong>
         <small>View Challenge roster</small>
         <span class="fc-action-chevron" aria-hidden="true">→</span>
     </a>
-    <a class="challenge-action-button fc-action-tile" href="/rules.php">
+    <a class="challenge-action-button fc-action-tile" href="/rules.php?challenge=<?= fc_e(rawurlencode((string)$challenge['public_id'])) ?>">
         <span>Rules</span>
         <strong><?= $currentRule !== null ? 'Published v' . fc_e((string) $currentRule['version_number']) : 'Draft' ?></strong>
         <small>Review Challenge Rules</small>
@@ -147,10 +152,14 @@ $lifecycleDescriptions = [
     </a>
     <a class="challenge-action-button fc-action-tile" href="/health/google/status.php">
         <span>Health readiness</span>
-        <strong>Not connected</strong>
+        <strong>Not available yet</strong>
         <small>View Health Connections</small>
         <span class="fc-action-chevron" aria-hidden="true">→</span>
     </a>
 </section>
 
+<section class="family-detail-controls" aria-label="Personal and Owner controls">
+    <a class="button button-secondary" href="/participation.php?challenge=<?= fc_e(rawurlencode((string)$challenge['public_id'])) ?>">My participation &amp; privacy</a>
+    <?php if ((int)$challenge['owner_user_id']===$userId): ?><a class="button button-secondary" href="/challenge-manage.php?challenge=<?= fc_e(rawurlencode((string)$challenge['public_id'])) ?>">Manage Challenge</a><?php endif; ?>
+</section>
 <?php endif; ?>

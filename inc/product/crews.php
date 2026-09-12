@@ -93,8 +93,9 @@ function fc_crew_memberships(PDO $pdo, int $requestUserId, int $crewId): array
 }
 
 /**
- * Foundation service for a future invitation acceptance path.
- * It is intentionally not exposed as a Wave 1 participant-facing form.
+ * Internal fixture/legacy membership helper, not a public invitation endpoint.
+ * Owner authority alone is not invitation acceptance. Future Crew invitations
+ * must consume Auth proof and the recipient's explicit acceptance atomically.
  */
 function fc_crew_membership_add_existing(PDO $pdo, int $actorUserId, int $crewId, int $memberUserId): void
 {
@@ -104,6 +105,8 @@ function fc_crew_membership_add_existing(PDO $pdo, int $actorUserId, int $crewId
     }
 
     fc_product_atomic($pdo, function () use ($pdo, $actorUserId, $crewId, $memberUserId): void {
+        fc_family_lock_crew($pdo, $crewId);
+        fc_crew_require_owner($pdo, $actorUserId, $crewId);
         $select = $pdo->prepare('SELECT id, role_code FROM crew_memberships WHERE crew_id = :crew_id AND user_id = :user_id FOR UPDATE');
         $select->execute([':crew_id' => $crewId, ':user_id' => $memberUserId]);
         $existing = $select->fetch(PDO::FETCH_ASSOC);
@@ -134,33 +137,13 @@ function fc_crew_membership_add_existing(PDO $pdo, int $actorUserId, int $crewId
 }
 
 /**
- * Owner-facing Alpha membership action using the stable FitCrew user public ID.
- * Email/provider identity is deliberately not used as a Crew membership key.
- */
-function fc_crew_membership_add_public(PDO $pdo, int $actorUserId, int $crewId, string $memberPublicId): void
-{
-    $memberPublicId = trim($memberPublicId);
-    if ($memberPublicId === '') {
-        throw new InvalidArgumentException('FitCrew Member ID is required.');
-    }
-
-    $lookup = $pdo->prepare('SELECT id, account_status FROM users WHERE public_id = :public_id LIMIT 1');
-    $lookup->execute([':public_id' => $memberPublicId]);
-    $member = $lookup->fetch(PDO::FETCH_ASSOC);
-    if ($member === false || (string) $member['account_status'] !== 'ACTIVE') {
-        throw new DomainException('That FitCrew member is unavailable.');
-    }
-
-    fc_crew_membership_add_existing($pdo, $actorUserId, $crewId, (int) $member['id']);
-}
-
-/**
  * Remove a Crew member without erasing product history. Any Challenge participation
  * within the Crew becomes REMOVED so Crew removal also revokes Challenge access.
  */
 function fc_crew_membership_remove(PDO $pdo, int $actorUserId, int $crewId, int $memberUserId): void
 {
     fc_product_atomic($pdo, function () use ($pdo, $actorUserId, $crewId, $memberUserId): void {
+        fc_family_lock_crew($pdo, $crewId);
         $crew = fc_crew_require_owner($pdo, $actorUserId, $crewId);
         if ((int) $crew['owner_user_id'] === $memberUserId) {
             throw new DomainException('The Crew Owner cannot be removed from the Crew.');
@@ -181,6 +164,21 @@ function fc_crew_membership_remove(PDO $pdo, int $actorUserId, int $crewId, int 
             'WHERE id = :id AND membership_status = \'ACTIVE\''
         );
         $removeMembership->execute([':id' => (int) $row['id']]);
+
+        $affected = $pdo->prepare('SELECT p.challenge_id FROM challenge_participations p JOIN challenges c ON c.id=p.challenge_id WHERE c.crew_id=:c AND p.user_id=:u AND p.participation_status=\'ACTIVE\' ORDER BY p.challenge_id FOR UPDATE');
+        $affected->execute([':c'=>$crewId, ':u'=>$memberUserId]);
+        foreach ($affected->fetchAll(PDO::FETCH_COLUMN) as $affectedChallengeId) {
+            $pdo->prepare('UPDATE challenge_participations SET participation_status=\'REMOVED\',removed_at=CURRENT_TIMESTAMP(6) WHERE challenge_id=:c AND user_id=:u AND participation_status=\'ACTIVE\'')->execute([':c'=>(int)$affectedChallengeId,':u'=>$memberUserId]);
+            fc_family_close_interval($pdo,(int)$affectedChallengeId,$memberUserId,'REMOVED');
+            fc_family_event($pdo,(int)$affectedChallengeId,$actorUserId,'PARTICIPANT_REMOVED',$memberUserId,['source'=>'CREW_MEMBERSHIP_REMOVAL']);
+        }
+        $offerHistory = $pdo->prepare('SELECT o.challenge_id FROM challenge_participant_offers o JOIN challenges c ON c.id=o.challenge_id WHERE c.crew_id=:c AND o.invited_user_id=:u AND o.offer_status=\'PENDING\' ORDER BY o.challenge_id FOR UPDATE');
+        $offerHistory->execute([':c'=>$crewId, ':u'=>$memberUserId]);
+        foreach ($offerHistory->fetchAll(PDO::FETCH_COLUMN) as $offerChallengeId) {
+            fc_family_event($pdo,(int)$offerChallengeId,$actorUserId,'INVITATION_CANCELLED',$memberUserId,['source'=>'CREW_MEMBERSHIP_REMOVAL']);
+        }
+        $cancelOffers = $pdo->prepare('UPDATE challenge_participant_offers o JOIN challenges c ON c.id=o.challenge_id SET o.offer_status=\'CANCELLED\',o.decided_at=CURRENT_TIMESTAMP(6) WHERE c.crew_id=:c AND o.invited_user_id=:u AND o.offer_status=\'PENDING\'');
+        $cancelOffers->execute([':c'=>$crewId, ':u'=>$memberUserId]);
 
         $removeParticipations = $pdo->prepare(
             'UPDATE challenge_participations p ' .

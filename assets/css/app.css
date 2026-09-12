@@ -3901,3 +3901,40 @@ body.fc-modal-open {
         justify-content: stretch;
     }
 }
+
+/* Family Alpha: management, personal consent and small-category privacy controls. */
+.family-section { margin-top: 1rem; }
+.family-section h2 { margin-bottom: .75rem; }
+.family-section-bar, .family-view-switch, .family-detail-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin: 1rem 0; }
+.family-notice { border: 1px solid #ccd7ee; border-left: 4px solid #2442c5; background: #f5f7fd; border-radius: 14px; padding: 1rem 1.15rem; margin: 1rem 0; }
+.family-notice p { margin: .4rem 0; }
+.family-facts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .8rem; }
+.family-facts div { padding: .85rem; background: #f6f8fd; border-radius: 12px; }
+.family-facts dt { font-weight: 750; font-size: .78rem; }
+.family-facts dd { margin: .4rem 0 0; overflow-wrap: anywhere; }
+.family-privacy-fields { border: 1px solid #d5def0; border-radius: 14px; padding: 1rem; display: grid; gap: 1rem; min-width: 0; }
+.family-privacy-fields legend { font-weight: 800; padding: 0 .4rem; }
+.family-privacy-fields select { width: 100%; max-width: 100%; }
+.family-privacy-required { background: #f6f8fd; border-radius: 12px; padding: .85rem; }
+.family-privacy-required p { font-size: .84rem; margin: .4rem 0 0; line-height: 1.55; }
+.product-form label.family-consent { display: grid; grid-template-columns: 1.25rem minmax(0,1fr); gap: .75rem; align-items: start; line-height: 1.6; }
+.product-form .family-consent input { width: 1.15rem; height: 1.15rem; margin-top: .25rem; padding: 0; }
+.family-control-grid { display: flex; flex-wrap: wrap; gap: .75rem; }
+.family-history-list { list-style: none; padding: 0; margin: 0; display: grid; gap: .75rem; }
+.family-history-list li { display: grid; gap: .3rem; padding: .8rem 0; border-bottom: 1px solid #dce3f1; }
+.family-history-list span, .family-history-list small { font-size: .82rem; }
+.family-pending-row { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; justify-content: space-between; padding: 1rem 0; border-bottom: 1px solid #dce3f1; }
+.family-pending-row > div { display: grid; gap: .3rem; }
+.family-pending-row span { font-size: .8rem; }
+.family-personal-list { display: grid; gap: .8rem; margin-top: 1rem; }
+.family-personal-item { position: relative; display: grid; gap: .4rem; padding: 1rem 4rem 1rem 1rem; border: 1px solid #d1dcf3; border-radius: 14px; }
+.family-personal-item > span:not(.fc-action-chevron) { font-size: .8rem; }
+.family-history-state { color: #7e350d; font-weight: 800; }
+@media (max-width: 760px) {
+    .family-facts { grid-template-columns: 1fr; }
+    .family-control-grid .button, .family-detail-controls .button { flex: 1 1 100%; }
+    .family-pending-row form { width: 100%; }
+    .family-pending-row .button { width: 100%; }
+    .family-privacy-fields { padding: .8rem; }
+    .family-privacy-fields select { font-size: .875rem; }
+}

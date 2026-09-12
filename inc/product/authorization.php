@@ -15,7 +15,7 @@ function fc_crew_require_member(PDO $pdo, int $userId, int $crewId): array
         'FROM crews c ' .
         'JOIN crew_memberships m ON m.crew_id = c.id AND m.user_id = :user_id ' .
         'WHERE c.id = :crew_id AND c.crew_status = \'ACTIVE\' AND m.membership_status = \'ACTIVE\' ' .
-        'LIMIT 1'
+        'LIMIT 1' . fc_product_current_read($pdo)
     );
     $statement->execute([':user_id' => $userId, ':crew_id' => $crewId]);
     $row = $statement->fetch(PDO::FETCH_ASSOC);
@@ -46,7 +46,7 @@ function fc_challenge_user_has_access(PDO $pdo, int $userId, int $challengeId): 
         '  ON p.challenge_id = c.id AND p.user_id = :participant_user_id AND p.participation_status IN (\'ACTIVE\', \'WITHDRAWN\') ' .
         'WHERE c.id = :challenge_id ' .
         '  AND (c.owner_user_id = :owner_user_id OR p.id IS NOT NULL) ' .
-        'LIMIT 1'
+        'LIMIT 1' . fc_product_current_read($pdo)
     );
     $statement->execute([
         ':participant_user_id' => $userId,
@@ -63,7 +63,7 @@ function fc_challenge_require_access(PDO $pdo, int $userId, int $challengeId): a
     $statement = $pdo->prepare(
         'SELECT c.*, cr.public_id AS crew_public_id, cr.display_name AS crew_name ' .
         'FROM challenges c JOIN crews cr ON cr.id = c.crew_id ' .
-        'WHERE c.id = :challenge_id LIMIT 1'
+        'WHERE c.id = :challenge_id LIMIT 1' . fc_product_current_read($pdo)
     );
     $statement->execute([':challenge_id' => $challengeId]);
     $challenge = $statement->fetch(PDO::FETCH_ASSOC);
@@ -81,7 +81,7 @@ function fc_challenge_require_owner(PDO $pdo, int $userId, int $challengeId): ar
     $statement = $pdo->prepare(
         'SELECT c.*, cr.public_id AS crew_public_id, cr.display_name AS crew_name ' .
         'FROM challenges c JOIN crews cr ON cr.id = c.crew_id ' .
-        'WHERE c.id = :challenge_id AND c.owner_user_id = :user_id LIMIT 1'
+        'WHERE c.id = :challenge_id AND c.owner_user_id = :user_id LIMIT 1' . fc_product_current_read($pdo)
     );
     $statement->execute([':challenge_id' => $challengeId, ':user_id' => $userId]);
     $challenge = $statement->fetch(PDO::FETCH_ASSOC);

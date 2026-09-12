@@ -12,11 +12,11 @@
         <p class="card-kicker">Profile</p>
         <h2><?= fc_e((string) ($currentUser['display_name'] ?: 'FitCrew member')) ?></h2>
         <dl class="account-facts">
-            <div><dt>FitCrew Member ID</dt><dd class="account-id"><?= fc_e((string) ($currentUser['public_id'] ?? '')) ?></dd></div>
+            <div><dt>Account reference</dt><dd class="account-id"><?= fc_e((string) ($currentUser['public_id'] ?? '')) ?></dd></div>
             <div><dt>Timezone</dt><dd><?= fc_e((string) ($currentUser['timezone'] ?: fc_config()['timezone'])) ?></dd></div>
             <div><dt>Locale</dt><dd><?= fc_e((string) ($currentUser['locale'] ?: 'Default')) ?></dd></div>
         </dl>
-        <p class="form-help">Share your Member ID with a Crew Owner when they need to add your existing FitCrew account during Family Alpha.</p>
+        <p class="form-help">This reference is not an invitation or a sign-in credential. Your Challenge sharing choices live under My participation &amp; privacy.</p>
     </article>
     <article class="product-card">
         <p class="card-kicker">Sign-in & security</p>

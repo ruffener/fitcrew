@@ -31,7 +31,7 @@ $welcomeName = $firstName !== '' ? $firstName : 'there';
 </section>
 <?php else: ?>
 <?php
-$crewChallenges = fc_challenge_summaries_for_crew($pdo, (int) $currentUser['user_id'], (int) $crew['id']);
+$crewChallenges = fc_challenge_summaries_for_crew($pdo, (int) $currentUser['user_id'], (int) $crew['id'], false);
 $isCrewOwner = (string) $crew['membership_role'] === 'OWNER';
 ?>
 <section class="overview-challenges" aria-labelledby="overview-challenges-title">
@@ -104,15 +104,13 @@ $isCrewOwner = (string) $crew['membership_role'] === 'OWNER';
                                 <?= fc_csrf_input() ?>
                                 <button class="button button-primary" type="submit" name="select_challenge" value="<?= fc_e((string) $crewChallenge['public_id']) ?>">Open Challenge</button>
                             </form>
-                        <?php elseif (in_array((string) $crewChallenge['lifecycle_status'], ['DRAFT', 'FORMING_CREW'], true)): ?>
+                        <?php else: ?>
                             <form method="post" action="/challenge.php">
                                 <?= fc_csrf_input() ?>
                                 <input type="hidden" name="action" value="join_challenge">
                                 <input type="hidden" name="challenge_public_id" value="<?= fc_e((string) $crewChallenge['public_id']) ?>">
-                                <button class="button button-primary" type="submit">Join Challenge</button>
+                                <button class="button button-primary" type="submit">Review and Join</button>
                             </form>
-                        <?php else: ?>
-                            <span class="overview-challenge-unavailable">Not available to join</span>
                         <?php endif; ?>
                     </div>
                 </article>

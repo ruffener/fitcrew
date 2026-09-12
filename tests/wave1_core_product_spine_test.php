@@ -53,11 +53,11 @@ try {
     wave1_expect_denied(fn () => fc_crew_require_member($pdo, $platformAdmin['id'], $crew['id']), 'platform role must not substitute for Crew membership');
 
     fc_crew_membership_add_existing($pdo, $owner['id'], $crew['id'], $member['id']);
-    fc_crew_membership_add_public($pdo, $owner['id'], $crew['id'], $removable['public_id']);
+    fc_crew_membership_add_existing($pdo, $owner['id'], $crew['id'], $removable['id']);
     $memberCrew = fc_crew_require_member($pdo, $member['id'], $crew['id']);
     wave1_assert((string) $memberCrew['membership_role'] === 'MEMBER', 'Added Crew user must be a MEMBER.');
     $removableCrew = fc_crew_require_member($pdo, $removable['id'], $crew['id']);
-    wave1_assert((string) $removableCrew['membership_role'] === 'MEMBER', 'Public-ID Crew add must activate an existing FitCrew MEMBER.');
+    wave1_assert((string) $removableCrew['membership_role'] === 'MEMBER', 'Test fixture must establish an existing Crew MEMBER.');
     wave1_expect_denied(fn () => fc_crew_membership_add_existing($pdo, $member['id'], $crew['id'], $outsider['id']), 'UI-hidden Crew Owner mutation remains server-blocked');
 
     wave1_expect_denied(
@@ -82,8 +82,12 @@ try {
     wave1_expect_denied(fn () => fc_challenge_require_public($pdo, $member['id'], $challenge['public_id']), 'changing Challenge/public ID must not bypass participation authorization');
     wave1_expect_denied(fn () => fc_challenge_join($pdo, $outsider['id'], $challenge['id']), 'nonmember cannot join Challenge');
 
-    fc_challenge_join($pdo, $member['id'], $challenge['id']);
-    fc_challenge_join($pdo, $removable['id'], $challenge['id']);
+    // Family Alpha requires personal acceptance of a published Rule Version.
+    wave1_expect_denied(fn () => fc_challenge_join($pdo, $member['id'], $challenge['id']), 'Legacy join cannot bypass contract acceptance');
+    $initialDraft = fc_challenge_rule_current_draft($pdo, $challenge['id']);
+    fc_challenge_rule_publish($pdo, $owner['id'], $challenge['id'], (int) $initialDraft['id']);
+    fc_challenge_join($pdo, $member['id'], $challenge['id'], (int) $initialDraft['id'], true);
+    fc_challenge_join($pdo, $removable['id'], $challenge['id'], (int) $initialDraft['id'], true);
     $memberChallenge = fc_challenge_require_access($pdo, $member['id'], $challenge['id']);
     wave1_assert((int) $memberChallenge['id'] === $challenge['id'], 'Explicit participant must gain Challenge-scoped access.');
 
@@ -93,7 +97,7 @@ try {
     $removedParticipation = fc_challenge_participation_for_user($pdo, $challenge['id'], $removable['id']);
     wave1_assert($removedParticipation !== null && (string) $removedParticipation['participation_status'] === 'REMOVED', 'Crew removal must preserve Challenge participation history as REMOVED.');
 
-    $draft = fc_challenge_rule_current_draft($pdo, $challenge['id']);
+    $draft = $initialDraft;
     wave1_assert($draft !== null && (int) $draft['version_number'] === 1, 'Challenge creation must establish Rule Version 1 draft.');
     wave1_assert((int) $draft['duration_days'] === 84, 'Planned start/end dates must resolve to the canonical 12-week / 84-day duration.');
     wave1_assert((int) $draft['weekly_checkin_day'] === 6, 'New Challenge setup must preserve the Saturday check-in default.');
@@ -110,7 +114,7 @@ try {
         'participant cannot mutate Challenge Rules'
     );
 
-    fc_challenge_rule_publish($pdo, $owner['id'], $challenge['id'], (int) $draft['id']);
+    // Initial publication already occurred before personal acceptance above.
     $published = fc_challenge_rule_current_published($pdo, $challenge['id']);
     wave1_assert($published !== null && (int) $published['version_number'] === 1, 'Rule Version 1 must publish.');
 

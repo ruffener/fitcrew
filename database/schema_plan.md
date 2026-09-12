@@ -74,3 +74,16 @@ Authorized Wave 1 adds the first durable product tables after the accepted authe
 - `user_product_contexts` — selected Crew/Challenge preference only; never authorization truth.
 
 Held Wave 2–4 tables are intentionally absent. No Health import/official-log, scoring result/standings, Challenge Monies, recognition, payment, or billing runtime is introduced by Wave 1.
+
+## Family Alpha B-D candidate (0300)
+
+The additive `0300_family_alpha_relationships.sql` migration adds independent Owner controls,
+product events, in-app participant offers, personal acceptance receipts, participation intervals
+and self-owned category privacy preferences. It preserves only the currently recorded legacy
+participation interval and never synthesizes acceptance. See `docs/family_alpha_bcd_foundation.md`.
+
+Crew email invitation/Auth-token integration is not implemented by this migration. Health evidence,
+manual measurements, official_daily_logs, Scoring, Monies and Recognition remain outside this slice.
+Deploy this schema and verify the production migration ledger before activating dependent runtime.
+
+- `crew_invitations` — Website-owned pending email invitations; email is delivery only, token stored hashed, membership activates only after authenticated acceptance.

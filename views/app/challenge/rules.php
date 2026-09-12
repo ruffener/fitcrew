@@ -47,7 +47,7 @@ $draftEndDate = $draftRule !== null
         <div class="rule-adjust-body">
             <p>Use this only if you want to correct the Challenge details before publishing.</p>
             <form class="product-form product-form-grid" method="post" action="/rules.php" data-challenge-dates data-default-duration="84">
-                <?= fc_csrf_input() ?>
+                <?= fc_csrf_input() ?><input type="hidden" name="challenge_public_id" value="<?= fc_e((string)$challenge['public_id']) ?>">
                 <input type="hidden" name="action" value="save_draft">
                 <input type="hidden" name="rule_id" value="<?= fc_e((string) $draftRule['id']) ?>">
                 <input type="hidden" name="duration_days" value="<?= fc_e((string) $draftRule['duration_days']) ?>" data-duration-days>
@@ -75,7 +75,7 @@ $draftEndDate = $draftRule !== null
     </details>
 
     <form method="post" action="/rules.php" class="publish-form rules-publish-primary">
-        <?= fc_csrf_input() ?>
+        <?= fc_csrf_input() ?><input type="hidden" name="challenge_public_id" value="<?= fc_e((string)$challenge['public_id']) ?>">
         <input type="hidden" name="action" value="publish">
         <input type="hidden" name="rule_id" value="<?= fc_e((string) $draftRule['id']) ?>">
         <button class="button button-primary" type="submit">Publish Challenge Rules</button>
@@ -102,7 +102,7 @@ $draftEndDate = $draftRule !== null
         <div><dt>Live standings</dt><dd><?= (int) $currentRule['live_leaderboard_visible'] === 1 ? 'Show provisional standings when available' : 'Hidden' ?></dd></div>
     </dl>
     <div class="scoring-explainer"><strong>How scoring will work</strong><p>Your FitCrew score shows the percentage improvement in estimated fat mass compared with a frozen starting baseline. Official scores use multiple eligible days to reduce the effect of any single reading. Website will consume the certified scoring output; it does not calculate competitive truth here.</p><p><strong>Estimated body composition:</strong> Body-composition readings are estimates from consumer scales and can vary with hydration, meals, exercise, time of day, and other conditions. FitCrew uses them to track trends in a recreational competition, not as medical or clinical measurements.</p></div>
-    <?php if ($isOwner && $draftRule === null): ?><form method="post" action="/rules.php" class="rule-update-action"><?= fc_csrf_input() ?><input type="hidden" name="action" value="begin_update"><button class="button button-secondary button-small" type="submit">Prepare Rule Update</button></form><?php endif; ?>
+    <?php if ($isOwner && $draftRule === null): ?><form method="post" action="/rules.php" class="rule-update-action"><?= fc_csrf_input() ?><input type="hidden" name="challenge_public_id" value="<?= fc_e((string)$challenge['public_id']) ?>"><input type="hidden" name="action" value="begin_update"><button class="button button-secondary button-small" type="submit">Prepare Rule Update</button></form><?php endif; ?>
 </section>
 <?php endif; ?>
 
@@ -113,7 +113,7 @@ $draftEndDate = $draftRule !== null
     </div>
     <p>Draft changes are editable. Publishing creates the current Rules while preserving earlier published history.</p>
     <form class="product-form product-form-grid" method="post" action="/rules.php" data-challenge-dates data-default-duration="84">
-        <?= fc_csrf_input() ?><input type="hidden" name="action" value="save_draft"><input type="hidden" name="rule_id" value="<?= fc_e((string) $draftRule['id']) ?>"><input type="hidden" name="duration_days" value="<?= fc_e((string) $draftRule['duration_days']) ?>" data-duration-days>
+        <?= fc_csrf_input() ?><input type="hidden" name="challenge_public_id" value="<?= fc_e((string)$challenge['public_id']) ?>"><input type="hidden" name="action" value="save_draft"><input type="hidden" name="rule_id" value="<?= fc_e((string) $draftRule['id']) ?>"><input type="hidden" name="duration_days" value="<?= fc_e((string) $draftRule['duration_days']) ?>" data-duration-days>
         <label>Planned start<input type="date" name="planned_start_date" value="<?= fc_e((string) ($draftRule['planned_start_date'] ?? '')) ?>" data-planned-start></label>
         <label>Planned end<input type="date" name="planned_end_date" value="<?= fc_e((string) ($draftEndDate ?? '')) ?>" data-planned-end><span data-duration-summary><?= fc_e(fc_rule_duration_summary((int) $draftRule['duration_days'])) ?></span></label>
         <label>Weekly check-in<select name="weekly_checkin_day"><?php for ($day=0;$day<=6;$day++): ?><option value="<?= $day ?>"<?= (int) $draftRule['weekly_checkin_day'] === $day ? ' selected' : '' ?>><?= fc_e(fc_weekday_label($day)) ?></option><?php endfor; ?></select></label>
@@ -122,7 +122,7 @@ $draftEndDate = $draftRule !== null
         <div class="locked-standard form-span-2"><span>Certified scoring standard</span><strong><?= fc_e((string) $draftRule['scoring_standard_code']) ?></strong><small>Governance-certified scoring mathematics are not editable here.</small></div>
         <div class="form-span-2 form-actions"><button class="button button-secondary" type="submit">Save Draft</button></div>
     </form>
-    <form method="post" action="/rules.php" class="publish-form"><?= fc_csrf_input() ?><input type="hidden" name="action" value="publish"><input type="hidden" name="rule_id" value="<?= fc_e((string) $draftRule['id']) ?>"><button class="button button-primary" type="submit">Publish Rule Version <?= fc_e((string) $draftRule['version_number']) ?></button></form>
+    <form method="post" action="/rules.php" class="publish-form"><?= fc_csrf_input() ?><input type="hidden" name="challenge_public_id" value="<?= fc_e((string)$challenge['public_id']) ?>"><input type="hidden" name="action" value="publish"><input type="hidden" name="rule_id" value="<?= fc_e((string) $draftRule['id']) ?>"><button class="button button-primary" type="submit">Publish Rule Version <?= fc_e((string) $draftRule['version_number']) ?></button></form>
 </section>
 <?php elseif ($currentRule === null): ?>
 <div class="inline-empty-state"><strong>No Published Rules yet.</strong><span>The Challenge Owner must publish the initial rule version before the Challenge moves forward.</span></div>

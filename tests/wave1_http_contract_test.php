@@ -8,7 +8,7 @@ if (PHP_SAPI !== 'cli') {
 }
 
 $root = dirname(__DIR__);
-$controllers = ['crew.php', 'challenge.php', 'participants.php', 'rules.php'];
+$controllers = ['crew.php', 'challenge.php', 'participants.php', 'rules.php', 'participation.php', 'challenge-manage.php'];
 foreach ($controllers as $controller) {
     $source = file_get_contents($root . '/' . $controller) ?: '';
     if (!str_contains($source, 'fc_require_login()')) {
@@ -38,22 +38,28 @@ if (!str_contains($subnav, '/challenge.php?view=detail')) {
 }
 
 $challengeIndex = file_get_contents($root . '/views/app/challenge/index.php') ?: '';
-foreach (['Your competitions.', 'Create New Challenge', 'fc-clickable-card', 'data-submit-form', 'fc-card-open-cue', 'Delete Draft', 'fc-modal-danger'] as $required) {
+foreach (['Your competitions.', 'Create New Challenge', 'fc-clickable-card', 'data-submit-form', 'fc-card-open-cue', 'Manage Challenge', 'Invitations &amp; my participation history'] as $required) {
     if (!str_contains($challengeIndex, $required)) {
         throw new RuntimeException('Challenge list/management contract is missing: ' . $required);
     }
 }
 
 $crewView = file_get_contents($root . '/views/app/crew/home.php') ?: '';
-foreach (['Add Member', 'FitCrew Member ID', 'Remove Crew Member', 'History will be preserved.', 'data-fitcrew-modal'] as $required) {
+foreach (['Invite Member', 'Pending invitations', 'Remove Crew Member', 'History will be preserved.', 'data-fitcrew-modal'] as $required) {
     if (!str_contains($crewView, $required)) {
         throw new RuntimeException('Crew member management/modal contract is missing: ' . $required);
     }
 }
 
 $accountView = file_get_contents($root . '/views/app/account.php') ?: '';
-if (!str_contains($accountView, 'FitCrew Member ID')) {
-    throw new RuntimeException('Account must expose the stable FitCrew Member ID for Alpha Crew membership management.');
+if (str_contains($crewView, 'name="member_public_id" maxlength="26"') || str_contains($crewView, '>Add Member<')) {
+    throw new RuntimeException('Normal Member-ID enrollment must remain retired.');
+}
+if (!str_contains($crewView, 'name="email"') || !str_contains($crewView, 'Send Invitation')) {
+    throw new RuntimeException('Crew invitation UI must use email delivery and explicit pending acceptance.');
+}
+if (str_contains($accountView, 'Share your Member ID')) {
+    throw new RuntimeException('Account still instructs direct membership enrollment.');
 }
 
 
@@ -152,8 +158,8 @@ fwrite(STDOUT, "- mobile navigation / focus-visible accessibility foundation: PA
 fwrite(STDOUT, "- Challenge setup end-date/duration choice + Rules handoff: PASS\n");
 fwrite(STDOUT, "- Overview Start here helper cue: PASS\n");
 fwrite(STDOUT, "- Overview Challenge-first hierarchy + per-Challenge status: PASS\n");
-fwrite(STDOUT, "- Crew selection + member add/remove modal contract: PASS\n");
-fwrite(STDOUT, "- Challenge list/detail routing + Draft delete modal contract: PASS\n");
+fwrite(STDOUT, "- Crew selection + history-preserving removal / retired Member-ID enrollment: PASS\n");
+fwrite(STDOUT, "- Challenge list/detail routing + Owner management / personal history entry: PASS\n");
 fwrite(STDOUT, "- FitCrew clickable-card / action-tile interaction standard: PASS\n");
 fwrite(STDOUT, "- Challenge list Create New Challenge placement + whole-card navigation: PASS\n");
 fwrite(STDOUT, "- Challenge Home focused action buttons: PASS\n");

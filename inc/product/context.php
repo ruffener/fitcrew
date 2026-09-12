@@ -22,7 +22,7 @@ function fc_product_context(PDO $pdo, int $userId): array
         $crew = $crews[0];
     }
 
-    $challenges = $crew !== null ? fc_challenges_for_user($pdo, $userId, (int) $crew['id']) : [];
+    $challenges = $crew !== null ? fc_challenges_for_user($pdo, $userId, (int) $crew['id'], true) : [];
     $challenge = null;
     $storedChallengeId = $stored !== null && $stored['selected_challenge_id'] !== null ? (int) $stored['selected_challenge_id'] : null;
     foreach ($challenges as $candidate) {

@@ -29,29 +29,27 @@ if (fc_is_post()) {
             );
             fc_product_context_select_crew($pdo, $userId, (int) $crew['id']);
             fc_flash('success', 'Your Crew is ready.');
-        } elseif ($action === 'add_member') {
+        } elseif ($action === 'invite_member') {
             $context = fc_product_context($pdo, $userId);
-            if ($context['crew'] === null) {
-                throw new DomainException('Select a Crew before adding a member.');
-            }
-            fc_crew_membership_add_public(
-                $pdo,
-                $userId,
-                (int) $context['crew']['id'],
-                (string) ($_POST['member_public_id'] ?? '')
-            );
-            fc_flash('success', 'Crew member added.');
+            if ($context['crew'] === null) throw new DomainException('Select a Crew before inviting someone.');
+            $invitation = fc_crew_invitation_create($pdo, $userId, (int)$context['crew']['id'], (string)($_POST['email'] ?? ''));
+            $delivery = fc_crew_invitation_send_message($invitation);
+            fc_flash('success', $delivery['driver'] === 'postmark' ? 'Crew invitation sent.' : 'Crew invitation created. Email delivery is still in log mode.');
+        } elseif ($action === 'resend_invitation') {
+            $context = fc_product_context($pdo, $userId);
+            if ($context['crew'] === null) throw new DomainException('Select a Crew before resending an invitation.');
+            $invitation = fc_crew_invitation_resend($pdo, $userId, (int)$context['crew']['id'], (string)($_POST['invitation_public_id'] ?? ''));
+            $delivery = fc_crew_invitation_send_message($invitation);
+            fc_flash('success', $delivery['driver'] === 'postmark' ? 'Crew invitation resent.' : 'Crew invitation refreshed. Email delivery is still in log mode.');
+        } elseif ($action === 'cancel_invitation') {
+            $context = fc_product_context($pdo, $userId);
+            if ($context['crew'] === null) throw new DomainException('Select a Crew before cancelling an invitation.');
+            fc_crew_invitation_cancel($pdo, $userId, (int)$context['crew']['id'], (string)($_POST['invitation_public_id'] ?? ''));
+            fc_flash('success', 'Crew invitation cancelled.');
         } elseif ($action === 'remove_member') {
-            $context = fc_product_context($pdo, $userId);
-            if ($context['crew'] === null) {
-                throw new DomainException('Select a Crew before removing a member.');
-            }
-            fc_crew_membership_remove_public(
-                $pdo,
-                $userId,
-                (int) $context['crew']['id'],
-                (string) ($_POST['member_public_id'] ?? '')
-            );
+            if (($_POST['confirm_action'] ?? '') !== 'remove_member') throw new DomainException('Confirm Crew member removal first.');
+            $targetCrew = fc_crew_require_public($pdo, $userId, (string) ($_POST['crew_public_id'] ?? ''));
+            fc_crew_membership_remove_public($pdo, $userId, (int) $targetCrew['id'], (string) ($_POST['member_public_id'] ?? ''));
             fc_flash('success', 'Crew member removed. History was preserved.');
         }
     } catch (Throwable $error) {
@@ -66,6 +64,7 @@ if (fc_is_post()) {
 $appContext = fc_product_context($pdo, $userId);
 $crew = $appContext['crew'];
 $memberships = $crew !== null ? fc_crew_memberships($pdo, $userId, (int) $crew['id']) : [];
+$pendingInvitations = $crew !== null && (string)$crew['membership_role'] === 'OWNER' ? fc_crew_invitations_pending($pdo, $userId, (int)$crew['id']) : [];
 $crewChallenges = $crew !== null ? fc_challenge_summaries_for_crew($pdo, $userId, (int) $crew['id']) : [];
 $appSection = 'crew';
 $title = 'Crew';

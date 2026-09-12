@@ -5,6 +5,7 @@
         <p>Open any Challenge you own or participate in. Choosing a Challenge also selects its Crew.</p>
     </div>
 </section>
+<nav class="family-view-switch" aria-label="Challenge list view"><a class="button button-secondary button-small" href="/challenge.php">Current Challenges</a><a class="button button-secondary button-small" href="/challenge.php?show=history">Include ended, archived &amp; deleted</a></nav>
 
 <?php if ($showCreateChallenge): ?>
     <section class="challenge-create-panel">
@@ -71,10 +72,6 @@ foreach ($appContext['crews'] as $crewCandidate) {
                                 : ($participantStatus === 'WITHDRAWN'
                                     ? 'Withdrawn'
                                     : ($isOwner ? 'Owner · Not competing' : 'Challenge access'));
-                            $canDeleteDraft = $isOwner
-                                && (string) $listedChallenge['lifecycle_status'] === 'DRAFT'
-                                && (int) $listedChallenge['participant_count'] === 0;
-                            $deleteModalId = 'delete-challenge-' . (string) $listedChallenge['public_id'];
                             ?>
                             <?php $selectFormId = 'select-challenge-' . (string) $listedChallenge['public_id']; ?>
                             <article
@@ -87,12 +84,11 @@ foreach ($appContext['crews'] as $crewCandidate) {
                                 <div class="challenge-index-title">
                                     <span class="status-chip status-chip-neutral"><?= fc_e(fc_challenge_lifecycle_label((string) $listedChallenge['lifecycle_status'], (string) $listedChallenge['operational_state'])) ?></span>
                                     <h3><?= fc_e((string) $listedChallenge['display_name']) ?></h3>
+                                    <?php if ($listedChallenge['effective_end_at'] !== null || $listedChallenge['archived_at'] !== null || $listedChallenge['deleted_at'] !== null): ?><p class="family-history-state"><?= fc_e(fc_challenge_management_label($listedChallenge)) ?></p><?php endif; ?>
                                     <p><?= fc_e($statusLabel) ?> · <?= fc_e((string) $listedChallenge['participant_count']) ?> active <?= (int) $listedChallenge['participant_count'] === 1 ? 'participant' : 'participants' ?></p>
                                 </div>
                                 <div class="challenge-row-actions">
-                                    <?php if ($canDeleteDraft): ?>
-                                        <button class="button button-danger-ghost button-small" type="button" data-modal-open="<?= fc_e($deleteModalId) ?>">Delete Draft</button>
-                                    <?php endif; ?>
+                                    <?php if ($isOwner): ?><a class="button button-secondary button-small" href="/challenge-manage.php?challenge=<?= fc_e(rawurlencode((string)$listedChallenge['public_id'])) ?>">Manage Challenge</a><?php endif; ?>
                                     <span class="fc-card-open-cue" aria-hidden="true">Open <span>→</span></span>
                                 </div>
                                 <form id="<?= fc_e($selectFormId) ?>" method="post" action="/challenge.php" hidden>
@@ -101,35 +97,6 @@ foreach ($appContext['crews'] as $crewCandidate) {
                                 </form>
                             </article>
 
-                            <?php if ($canDeleteDraft): ?>
-                                <dialog class="fc-modal fc-modal-danger" id="<?= fc_e($deleteModalId) ?>" data-fitcrew-modal aria-labelledby="<?= fc_e($deleteModalId) ?>-title">
-                                    <div class="fc-modal-panel">
-                                        <header class="fc-modal-hero fc-modal-hero-danger">
-                                            <div>
-                                                <p class="eyebrow">Delete Draft Challenge</p>
-                                                <h2 id="<?= fc_e($deleteModalId) ?>-title">Delete <?= fc_e((string) $listedChallenge['display_name']) ?>?</h2>
-                                                <p>This action cannot be undone.</p>
-                                            </div>
-                                            <button class="fc-modal-close" type="button" data-modal-close aria-label="Close delete Challenge confirmation"><span aria-hidden="true">×</span></button>
-                                        </header>
-                                        <div class="fc-modal-body">
-                                            <div class="danger-confirmation-copy">
-                                                <strong>This Draft has no participant history and no published Rules.</strong>
-                                                <span>Deleting it permanently removes the Draft Challenge and its unpublished Rule draft.</span>
-                                            </div>
-                                            <div class="fc-modal-actions">
-                                                <button class="button button-secondary" type="button" data-modal-close>Keep Challenge</button>
-                                                <form method="post" action="/challenge.php">
-                                                    <?= fc_csrf_input() ?>
-                                                    <input type="hidden" name="action" value="delete_challenge_draft">
-                                                    <input type="hidden" name="challenge_public_id" value="<?= fc_e((string) $listedChallenge['public_id']) ?>">
-                                                    <button class="button button-danger" type="submit">Delete Draft Challenge</button>
-                                                </form>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </dialog>
-                            <?php endif; ?>
                         <?php endforeach; ?>
                     </div>
                 <?php endif; ?>
@@ -147,4 +114,13 @@ foreach ($appContext['crews'] as $crewCandidate) {
             </section>
         <?php endforeach; ?>
     </div>
+<?php endif; ?>
+
+<?php
+$personalItems = array_values(array_filter($personalChallenges,static fn(array $p):bool=>
+    $p['offer_status']==='PENDING' || ($p['participation_status']!==null && ($p['participation_status']!=='ACTIVE' || $p['effective_end_at']!==null || $p['archived_at']!==null || $p['deleted_at']!==null))
+));
+?>
+<?php if ($personalItems!==[]): ?>
+<section class="product-card family-section"><p class="card-kicker">Personal access</p><h2>Invitations &amp; my participation history</h2><p>Pending invitations do not give access to a Challenge roster. Your own history and privacy controls remain available after withdrawal, removal or deletion from active use.</p><div class="family-personal-list"><?php foreach ($personalItems as $item): ?><a class="fc-action-tile family-personal-item" href="/participation.php?challenge=<?= fc_e(rawurlencode((string)$item['public_id'])) ?>"><strong><?= fc_e((string)$item['display_name']) ?></strong><span><?= fc_e((string)$item['crew_name']) ?> · <?= $item['offer_status']==='PENDING' ? 'Pending personal acceptance' : 'My history &amp; privacy' ?></span><span class="fc-action-chevron" aria-hidden="true">→</span></a><?php endforeach; ?></div></section>
 <?php endif; ?>

@@ -22,6 +22,7 @@
 
     <form class="product-form product-form-grid" method="post" action="/challenge.php" data-challenge-dates data-default-duration="84">
         <?= fc_csrf_input() ?>
+        <input type="hidden" name="crew_public_id" value="<?= fc_e((string)$crew['public_id']) ?>">
         <input type="hidden" name="action" value="create_challenge">
         <input type="hidden" name="duration_days" value="84" data-duration-days>
 

@@ -6,6 +6,7 @@ declare(strict_types=1);
 function fc_challenge_rule_draft_create(PDO $pdo, int $challengeId, int $actorUserId, array $values = []): array
 {
     return fc_product_atomic($pdo, function () use ($pdo, $challengeId, $actorUserId, $values): array {
+        fc_family_lock_challenge($pdo, $challengeId);
         fc_challenge_require_owner($pdo, $actorUserId, $challengeId);
 
         // Serialize draft/version creation per Challenge so two Owner requests cannot
@@ -17,16 +18,16 @@ function fc_challenge_rule_draft_create(PDO $pdo, int $challengeId, int $actorUs
         }
 
         $existing = $pdo->prepare(
-            'SELECT id FROM challenge_rule_versions WHERE challenge_id = :challenge_id AND version_status = \'DRAFT\' LIMIT 1'
+            'SELECT id FROM challenge_rule_versions WHERE challenge_id = :challenge_id AND version_status = \'DRAFT\' LIMIT 1 FOR UPDATE'
         );
         $existing->execute([':challenge_id' => $challengeId]);
         if ($existing->fetchColumn() !== false) {
             throw new DomainException('A Challenge rule draft already exists.');
         }
 
-        $versionStatement = $pdo->prepare('SELECT COALESCE(MAX(version_number), 0) + 1 FROM challenge_rule_versions WHERE challenge_id = :challenge_id');
+        $versionStatement = $pdo->prepare('SELECT version_number FROM challenge_rule_versions WHERE challenge_id = :challenge_id ORDER BY version_number DESC LIMIT 1 FOR UPDATE');
         $versionStatement->execute([':challenge_id' => $challengeId]);
-        $version = (int) $versionStatement->fetchColumn();
+        $version = (int) $versionStatement->fetchColumn() + 1;
 
         $timezone = trim((string) ($values['challenge_timezone'] ?? fc_config()['timezone']));
         if (!fc_product_timezone_is_valid($timezone)) {
@@ -51,7 +52,7 @@ function fc_challenge_rule_draft_create(PDO $pdo, int $challengeId, int $actorUs
         }
         if ($supersedesVersionId !== null) {
             $supersedesCheck = $pdo->prepare(
-                "SELECT id FROM challenge_rule_versions WHERE id = :id AND challenge_id = :challenge_id AND version_status = 'PUBLISHED' LIMIT 1"
+                "SELECT id FROM challenge_rule_versions WHERE id = :id AND challenge_id = :challenge_id AND version_status = 'PUBLISHED' LIMIT 1 FOR UPDATE"
             );
             $supersedesCheck->execute([':id' => $supersedesVersionId, ':challenge_id' => $challengeId]);
             if ($supersedesCheck->fetchColumn() === false) {
@@ -158,7 +159,7 @@ function fc_challenge_rule_current_published(PDO $pdo, int $challengeId): ?array
     $statement = $pdo->prepare(
         'SELECT * FROM challenge_rule_versions ' .
         'WHERE challenge_id = :challenge_id AND version_status = \'PUBLISHED\' ' .
-        'ORDER BY version_number DESC LIMIT 1'
+        'ORDER BY version_number DESC LIMIT 1' . fc_product_current_read($pdo)
     );
     $statement->execute([':challenge_id' => $challengeId]);
     $row = $statement->fetch(PDO::FETCH_ASSOC);
@@ -171,7 +172,7 @@ function fc_challenge_rule_current_draft(PDO $pdo, int $challengeId): ?array
     $statement = $pdo->prepare(
         'SELECT * FROM challenge_rule_versions ' .
         'WHERE challenge_id = :challenge_id AND version_status = \'DRAFT\' ' .
-        'ORDER BY version_number DESC LIMIT 1'
+        'ORDER BY version_number DESC LIMIT 1' . fc_product_current_read($pdo)
     );
     $statement->execute([':challenge_id' => $challengeId]);
     $row = $statement->fetch(PDO::FETCH_ASSOC);
@@ -198,6 +199,7 @@ function fc_challenge_rule_history(PDO $pdo, int $requestUserId, int $challengeI
 function fc_challenge_rule_save_draft(PDO $pdo, int $actorUserId, int $challengeId, int $ruleId, array $values): void
 {
     fc_product_atomic($pdo, function () use ($pdo, $actorUserId, $challengeId, $ruleId, $values): void {
+        fc_family_lock_challenge($pdo, $challengeId);
         fc_challenge_require_owner($pdo, $actorUserId, $challengeId);
 
         $statement = $pdo->prepare(
@@ -245,6 +247,7 @@ function fc_challenge_rule_save_draft(PDO $pdo, int $actorUserId, int $challenge
 function fc_challenge_rule_publish(PDO $pdo, int $actorUserId, int $challengeId, int $ruleId): void
 {
     fc_product_atomic($pdo, function () use ($pdo, $actorUserId, $challengeId, $ruleId): void {
+        fc_family_lock_challenge($pdo, $challengeId);
         $challenge = fc_challenge_require_owner($pdo, $actorUserId, $challengeId);
         $statement = $pdo->prepare(
             'SELECT * FROM challenge_rule_versions WHERE id = :id AND challenge_id = :challenge_id LIMIT 1 FOR UPDATE'
@@ -287,6 +290,7 @@ function fc_challenge_rule_publish(PDO $pdo, int $actorUserId, int $challengeId,
 function fc_challenge_rule_begin_update(PDO $pdo, int $actorUserId, int $challengeId): array
 {
     return fc_product_atomic($pdo, function () use ($pdo, $actorUserId, $challengeId): array {
+        fc_family_lock_challenge($pdo, $challengeId);
         $challenge = fc_challenge_require_owner($pdo, $actorUserId, $challengeId);
         $draft = fc_challenge_rule_current_draft($pdo, $challengeId);
         if ($draft !== null) {
