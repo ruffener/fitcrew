@@ -129,6 +129,56 @@ function fc_crew_invitation_resend(PDO $pdo, int $actorUserId, int $crewId, stri
     ];
 }
 
+/**
+ * Read-only invitation snapshot for Auth admission proof.
+ *
+ * @return array{invitation_public_id:string,generation:int,expires_at:string}|null
+ */
+function fc_crew_invitation_auth_snapshot(
+    PDO $pdo,
+    string $invitationPublicId,
+    int $expectedGeneration,
+    bool $lockForAdmission = false
+): ?array {
+    $invitationPublicId = trim($invitationPublicId);
+    if ($invitationPublicId === '' || $expectedGeneration < 0) {
+        return null;
+    }
+
+    if ($lockForAdmission && !$pdo->inTransaction()) {
+        throw new DomainException('Invitation admission lock requires an active database transaction.');
+    }
+
+    $sql =
+        'SELECT public_id, resend_count, expires_at ' .
+        'FROM crew_invitations ' .
+        'WHERE public_id=:p ' .
+        'AND resend_count=:g ' .
+        'AND invitation_status=\'PENDING\' ' .
+        'AND expires_at > CURRENT_TIMESTAMP(6) ' .
+        'AND accepted_by_user_id IS NULL ' .
+        'AND accepted_at IS NULL ' .
+        'AND cancelled_at IS NULL ' .
+        'LIMIT 1';
+
+    if ($lockForAdmission) {
+        $sql .= ' FOR UPDATE';
+    }
+
+    $query = $pdo->prepare($sql);
+    $query->execute([':p' => $invitationPublicId, ':g' => $expectedGeneration]);
+    $row = $query->fetch(PDO::FETCH_ASSOC);
+    if ($row === false) {
+        return null;
+    }
+
+    return [
+        'invitation_public_id' => (string) $row['public_id'],
+        'generation' => (int) $row['resend_count'],
+        'expires_at' => (string) $row['expires_at'],
+    ];
+}
+
 function fc_crew_invitation_cancel(PDO $pdo, int $actorUserId, int $crewId, string $publicId): void
 {
     fc_product_atomic($pdo, function () use ($pdo,$actorUserId,$crewId,$publicId): void {
