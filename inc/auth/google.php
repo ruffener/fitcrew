@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/invitation_continuations.php';
+
 const FC_GOOGLE_ISSUERS = ['accounts.google.com', 'https://accounts.google.com'];
 
 function fc_google_auth_client_id(): string
@@ -29,16 +31,43 @@ function fc_google_prepare_login_transaction(PDO $pdo): array
 
     $state = fc_google_random_token();
     $nonce = fc_google_random_token();
-    $transaction = fc_auth_transaction_create(
-        $pdo,
-        'LOGIN',
-        'GOOGLE',
-        null,
-        $state,
-        fc_auth_browser_binding(),
-        'APP_HOME',
-        $nonce
-    );
+    $browserBinding = fc_auth_browser_binding();
+    $continuation = fc_auth_crew_invitation_continuation_pending_for_login($pdo);
+    $destinationKey = $continuation === null
+        ? 'APP_HOME'
+        : FC_AUTH_CREW_INVITATION_DESTINATION;
+
+    $ownsTransaction = $continuation !== null && !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
+        $transaction = fc_auth_transaction_create(
+            $pdo,
+            'LOGIN',
+            'GOOGLE',
+            null,
+            $state,
+            $browserBinding,
+            $destinationKey,
+            $nonce
+        );
+        if ($continuation !== null) {
+            fc_auth_crew_invitation_continuation_bind_login_transaction(
+                $pdo,
+                (string) $continuation['public_id'],
+                (int) $transaction['id']
+            );
+        }
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $error) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $error;
+    }
 
     return [
         'transaction_id' => $transaction['public_id'],
@@ -221,6 +250,18 @@ function fc_google_complete_verified_login(
             throw new DomainException('auth_transaction_invalid');
         }
 
+        $invitationContinuation = null;
+        if ((string) $transaction['post_auth_destination_key'] === FC_AUTH_CREW_INVITATION_DESTINATION) {
+            $invitationContinuation = fc_auth_crew_invitation_continuation_for_transaction(
+                $pdo,
+                (int) $transaction['id'],
+                true
+            );
+            if ($invitationContinuation === null) {
+                throw new DomainException('invitation_continuation_invalid');
+            }
+        }
+
         $identity = fc_auth_identity_find_oidc(
             $pdo,
             'GOOGLE',
@@ -239,8 +280,35 @@ function fc_google_complete_verified_login(
             if ($user === null || (string) $user['account_status'] !== 'ACTIVE') {
                 throw new DomainException('fitcrew_account_access_denied');
             }
+
+            if ($invitationContinuation !== null) {
+                $snapshot = fc_auth_crew_invitation_product_snapshot(
+                    $pdo,
+                    (string) $invitationContinuation['invitation_public_id'],
+                    (int) $invitationContinuation['invitation_generation'],
+                    false
+                );
+                if ($snapshot === null) {
+                    throw new DomainException('invitation_continuation_product_invalid');
+                }
+            }
         } else {
-            if (!fc_google_prelaunch_allows_new_account($claims)) {
+            if ($invitationContinuation !== null) {
+                $snapshot = fc_auth_crew_invitation_product_snapshot(
+                    $pdo,
+                    (string) $invitationContinuation['invitation_public_id'],
+                    (int) $invitationContinuation['invitation_generation'],
+                    true
+                );
+                if ($snapshot === null) {
+                    throw new DomainException('prelaunch_invitation_denied');
+                }
+                fc_auth_crew_invitation_admission_claim(
+                    $pdo,
+                    (int) $invitationContinuation['id'],
+                    (string) $invitationContinuation['invitation_public_id']
+                );
+            } elseif (!fc_google_prelaunch_allows_new_account($claims)) {
                 throw new DomainException('prelaunch_new_account_denied');
             }
 
@@ -315,6 +383,23 @@ function fc_google_complete_verified_login(
             $rawClientNetworkEvidence
         );
 
+        if ($invitationContinuation !== null) {
+            fc_auth_crew_invitation_continuation_mark_authenticated(
+                $pdo,
+                (int) $invitationContinuation['id'],
+                (int) $user['id'],
+                (int) $sessionRecord['id'],
+                $newAccount
+            );
+            if ($newAccount) {
+                fc_auth_crew_invitation_admission_complete(
+                    $pdo,
+                    (int) $invitationContinuation['id'],
+                    (int) $user['id']
+                );
+            }
+        }
+
         fc_audit_event_write($pdo, [
             'actor_user_id' => (int) $user['id'],
             'event_type' => 'GOOGLE_AUTH_SUCCESS',
@@ -363,6 +448,7 @@ function fc_google_audit_rejection(PDO $pdo, string $reason, ?int $actorUserId =
         'nonce_failed',
         'account_denied',
         'prelaunch_denied',
+        'invitation_failed',
         'unexpected_failure',
     ];
     if (!in_array($reason, $allowedReasons, true)) {

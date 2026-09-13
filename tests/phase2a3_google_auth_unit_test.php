@@ -90,6 +90,17 @@ try {
     $unverifiedClaims['provider_email_verified'] = 0;
     fc_test_assert(!fc_google_prelaunch_allows_new_account($unverifiedClaims), 'unverified prelaunch account was accepted');
 
+    fc_test_assert(
+        fc_auth_destination_path('CREW_INVITATION_ACCEPTANCE') === '/crew-invite.php',
+        'Crew invitation authentication destination is not fixed'
+    );
+    $invitationSource = file_get_contents(fc_path('inc/auth/invitation_continuations.php')) ?: '';
+    fc_test_assert(
+        str_contains($invitationSource, 'fc_auth_crew_invitation_product_snapshot')
+            && str_contains($invitationSource, 'lockForAdmission'),
+        'Google invitation admission does not require the Website validation seam'
+    );
+
     fc_test_assert(fc_google_request_origin_valid('https://fitcrewchallenge.com'), 'expected same origin was rejected');
     fc_test_assert(!fc_google_request_origin_valid('https://evil.example'), 'wrong origin was accepted');
 
@@ -156,6 +167,7 @@ try {
     echo "- expired credential rejection: PASS\n";
     echo "- nonce mismatch rejection: PASS\n";
     echo "- prelaunch new-account gate: PASS\n";
+    echo "- invitation admission fixed destination + Website validation seam: PASS\n";
     echo "- same-origin enforcement: PASS\n";
     echo "- account-entry provider order: PASS\n";
     echo "- Google authentication / Google Health separation: PASS\n";

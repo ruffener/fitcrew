@@ -5,6 +5,21 @@ declare(strict_types=1);
 require_once __DIR__ . '/inc/bootstrap.php';
 
 if (fc_is_logged_in()) {
+    if (fc_auth_crew_invitation_continuation_session_public_id() !== null) {
+        try {
+            $continuation = fc_auth_crew_invitation_continuation_bind_existing_session(
+                fc_db(),
+                fc_current_user()
+            );
+            fc_redirect((string) $continuation['destination']);
+        } catch (Throwable $error) {
+            fc_auth_crew_invitation_continuation_clear_session();
+            fc_log('warning', 'Unable to continue an authenticated Crew invitation.', [
+                'reason' => 'crew_invitation_continuation_failed',
+            ]);
+            fc_flash('error', 'This Crew invitation changed or expired. Open the latest invitation email and try again.');
+        }
+    }
     fc_redirect('/app.php');
 }
 

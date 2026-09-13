@@ -13,6 +13,7 @@ const FC_AUDIT_OUTCOMES = ['SUCCESS', 'FAILURE', 'DENIED'];
 const FC_AUTH_DESTINATIONS = [
     'APP_HOME' => '/app.php',
     'ACCOUNT_ENTRY' => '/login.php',
+    'CREW_INVITATION_ACCEPTANCE' => '/crew-invite.php',
 ];
 
 function fc_contract_value(string $value, array $allowed, string $label): string

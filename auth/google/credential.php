@@ -92,18 +92,28 @@ try {
 } catch (DomainException $e) {
     $reason = match ($e->getMessage()) {
         'prelaunch_new_account_denied' => 'prelaunch_denied',
+        'prelaunch_invitation_denied',
+        'prelaunch_invitation_admission_claimed',
+        'invitation_continuation_invalid',
+        'invitation_continuation_product_invalid',
+        'invitation_continuation_already_used' => 'invitation_failed',
         'fitcrew_account_access_denied' => 'account_denied',
         'google_nonce_invalid' => 'nonce_failed',
         'auth_transaction_invalid', 'auth_transaction_already_consumed' => 'transaction_failed',
         default => 'credential_failed',
     };
+    if ($reason === 'invitation_failed') {
+        fc_auth_crew_invitation_continuation_clear_session();
+    }
     fc_google_record_rejection_safely($reason);
 
     $message = $reason === 'prelaunch_denied'
         ? 'This account is not enabled for the controlled FitCrew Challenge prelaunch proof.'
+        : ($reason === 'invitation_failed'
+            ? 'This Crew invitation changed or expired. Open the latest invitation email and try again.'
         : ($reason === 'account_denied'
             ? 'FitCrew Challenge account access is unavailable.'
-            : 'Google sign-in could not be completed. Please try again.');
+            : 'Google sign-in could not be completed. Please try again.'));
 
     fc_google_json_response(403, ['ok' => false, 'message' => $message]);
 } catch (Throwable $e) {
