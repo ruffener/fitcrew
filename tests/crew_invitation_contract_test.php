@@ -24,4 +24,12 @@ ci_assert(str_contains($service, "accepted_by_user_id IS NULL") && str_contains(
 ci_assert(str_contains($service, 'if ($lockForAdmission && !$pdo->inTransaction())'), 'Admission locking must require an active transaction.');
 ci_assert(str_contains($service, "\$sql .= ' FOR UPDATE'"), 'Admission locking must use FOR UPDATE.');
 ci_assert(str_contains($service, "'invitation_public_id' =>") && str_contains($service, "'generation' =>") && str_contains($service, "'expires_at' =>"), 'Auth snapshot must return only the minimal approved fields.');
-fwrite(STDOUT,"Crew invitation contract proof: PASS\n- Email invitation + pending state: PASS\n- Token hash storage / resend rotation: PASS\n- Authenticated explicit acceptance: PASS\n- Provider email remains non-identity: PASS\n- Auth read-only generation snapshot / admission lock contract: PASS\n");
+
+$pass3Landing=file_get_contents($root.'/crew-invite.php');
+ci_assert(str_contains($pass3Landing,'fc_auth_crew_invitation_continuation_issue('),'Raw invitation landing must issue Auth continuation.');
+ci_assert(str_contains($pass3Landing,'fc_auth_crew_invitation_continuation_current($pdo)'),'Clean invitation page must consume only Auth continuation evidence.');
+ci_assert(str_contains($pass3Landing,'Referrer-Policy: no-referrer'),'Token-bearing response must use no-referrer.');
+ci_assert(!str_contains(file_get_contents($root.'/views/public/crew_invitation.php'),'name="token"'),'Ordinary acceptance form must not carry raw invitation token.');
+ci_assert(str_contains($service,'function fc_crew_invitation_accept_continuation('),'Authenticated continuation acceptance helper missing.');
+ci_assert(str_contains($service,'fc_auth_crew_invitation_continuation_consume('),'Continuation acceptance must consume Auth continuation.');
+fwrite(STDOUT,"Crew invitation contract proof: PASS\n- Email invitation + pending state: PASS\n- Token hash storage / resend rotation: PASS\n- Authenticated explicit acceptance: PASS\n- Provider email remains non-identity: PASS\n- Auth read-only generation snapshot / admission lock contract: PASS\n- Auth continuation / raw-token removal contract: PASS\n");

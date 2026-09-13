@@ -87,3 +87,22 @@ manual measurements, official_daily_logs, Scoring, Monies and Recognition remain
 Deploy this schema and verify the production migration ledger before activating dependent runtime.
 
 - `crew_invitations` — Website-owned pending email invitations; email is delivery only, token stored hashed, membership activates only after authenticated acceptance.
+
+
+## Family Alpha A PASS 3 — Invitation continuation + delivery truth (0310 / 0320)
+
+Auth-owned `0310_create_auth_invitation_continuations.sql` provides the browser-bound
+authentication continuation and generic HMAC-evidence rate-limit buckets. Website consumes
+those interfaces without modifying Auth-owned files.
+
+Website-owned `0320_crew_invitation_delivery_truth.sql` corrects invitation transport semantics:
+
+- `PENDING_SEND` — the current invitation generation exists but configured transport has not accepted it;
+- `TRANSPORT_ACCEPTED` — configured transport accepted the message; mailbox delivery is not implied;
+- `TRANSPORT_FAILED` — configured transport failed/rejected the current generation;
+- `sent_at` is nullable and represents transport-accepted time only;
+- `transport_driver`, `transport_message_id`, and `transport_attempted_at` preserve current-generation transport evidence.
+
+Legacy pre-0320 `sent_at` values are cleared because the earlier runtime set them before
+transport acceptance and they are not reliable delivery evidence. Resend rotates the invitation
+generation (`resend_count`), resets current-generation transport truth, and never restores an old bearer token.

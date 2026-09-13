@@ -126,7 +126,18 @@
     <?php foreach ($pendingInvitations as $invitation): ?>
         <article class="member-card is-muted">
             <div class="avatar-badge" aria-hidden="true">@</div>
-            <div class="member-card-copy"><strong><?= fc_e((string)$invitation['invited_email']) ?></strong><span>Pending · expires <?= fc_e(date('M j, Y', strtotime((string)$invitation['expires_at']))) ?></span></div>
+            <?php
+            $transportStatus = (string)($invitation['transport_status'] ?? 'PENDING_SEND');
+            $transportLabel = match ($transportStatus) {
+                'TRANSPORT_ACCEPTED' => 'Email accepted by transport',
+                'TRANSPORT_FAILED' => 'Email send failed',
+                default => 'Email pending send',
+            };
+            ?>
+            <div class="member-card-copy">
+                <strong><?= fc_e((string)$invitation['invited_email']) ?></strong>
+                <span>Pending · <?= fc_e($transportLabel) ?> · expires <?= fc_e(date('M j, Y', strtotime((string)$invitation['expires_at']))) ?></span>
+            </div>
             <div class="section-bar-actions">
                 <form method="post" action="/crew.php"><?= fc_csrf_input() ?><input type="hidden" name="action" value="resend_invitation"><input type="hidden" name="invitation_public_id" value="<?= fc_e((string)$invitation['public_id']) ?>"><button class="button button-secondary button-small" type="submit">Resend</button></form>
                 <form method="post" action="/crew.php"><?= fc_csrf_input() ?><input type="hidden" name="action" value="cancel_invitation"><input type="hidden" name="invitation_public_id" value="<?= fc_e((string)$invitation['public_id']) ?>"><button class="button button-danger button-small" type="submit">Cancel</button></form>

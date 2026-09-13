@@ -32,15 +32,22 @@ if (fc_is_post()) {
         } elseif ($action === 'invite_member') {
             $context = fc_product_context($pdo, $userId);
             if ($context['crew'] === null) throw new DomainException('Select a Crew before inviting someone.');
+            fc_crew_invitation_rate_limit_issue($pdo, $userId);
             $invitation = fc_crew_invitation_create($pdo, $userId, (int)$context['crew']['id'], (string)($_POST['email'] ?? ''));
-            $delivery = fc_crew_invitation_send_message($invitation);
-            fc_flash('success', $delivery['driver'] === 'postmark' ? 'Crew invitation sent.' : 'Crew invitation created. Email delivery is still in log mode.');
+            $delivery = fc_crew_invitation_deliver($pdo, $invitation);
+            fc_flash('success', $delivery['driver'] === 'postmark'
+                ? 'Crew invitation accepted by email transport.'
+                : 'Crew invitation created. Email delivery is still in log mode.');
         } elseif ($action === 'resend_invitation') {
             $context = fc_product_context($pdo, $userId);
             if ($context['crew'] === null) throw new DomainException('Select a Crew before resending an invitation.');
-            $invitation = fc_crew_invitation_resend($pdo, $userId, (int)$context['crew']['id'], (string)($_POST['invitation_public_id'] ?? ''));
-            $delivery = fc_crew_invitation_send_message($invitation);
-            fc_flash('success', $delivery['driver'] === 'postmark' ? 'Crew invitation resent.' : 'Crew invitation refreshed. Email delivery is still in log mode.');
+            $invitationPublicId = (string)($_POST['invitation_public_id'] ?? '');
+            fc_crew_invitation_rate_limit_resend($pdo, $userId, $invitationPublicId);
+            $invitation = fc_crew_invitation_resend($pdo, $userId, (int)$context['crew']['id'], $invitationPublicId);
+            $delivery = fc_crew_invitation_deliver($pdo, $invitation);
+            fc_flash('success', $delivery['driver'] === 'postmark'
+                ? 'Crew invitation resend accepted by email transport.'
+                : 'Crew invitation refreshed. Email delivery is still in log mode.');
         } elseif ($action === 'cancel_invitation') {
             $context = fc_product_context($pdo, $userId);
             if ($context['crew'] === null) throw new DomainException('Select a Crew before cancelling an invitation.');
