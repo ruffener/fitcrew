@@ -249,6 +249,30 @@ function fc_auth_crew_invitation_continuation_pending_for_login(PDO $pdo): ?arra
 
     $row = fc_auth_crew_invitation_continuation_find_for_browser($pdo, $publicId, ['ISSUED']);
     if ($row === null && !$pdo->inTransaction()) {
+        $bound = fc_auth_crew_invitation_continuation_find_for_browser($pdo, $publicId, ['LOGIN_BOUND']);
+        if ($bound === null) {
+            fc_auth_crew_invitation_continuation_clear_session($publicId);
+        }
+    }
+
+    return $row;
+}
+
+/** @return array<string,mixed>|null */
+function fc_auth_crew_invitation_continuation_login_context(PDO $pdo, bool $forUpdate = false): ?array
+{
+    $publicId = fc_auth_crew_invitation_continuation_session_public_id();
+    if ($publicId === null) {
+        return null;
+    }
+
+    $row = fc_auth_crew_invitation_continuation_find_for_browser(
+        $pdo,
+        $publicId,
+        ['ISSUED', 'LOGIN_BOUND'],
+        $forUpdate
+    );
+    if ($row === null && !$pdo->inTransaction()) {
         fc_auth_crew_invitation_continuation_clear_session($publicId);
     }
 

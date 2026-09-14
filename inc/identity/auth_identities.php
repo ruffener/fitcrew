@@ -21,9 +21,9 @@ function fc_auth_identity_create(PDO $pdo, int $userId, array $identity): array
     $objectId = fc_nullable_trimmed($identity['provider_object_id'] ?? null);
     $protocolSubject = fc_nullable_trimmed($identity['protocol_subject'] ?? null);
 
-    if (in_array($provider, ['GOOGLE', 'APPLE'], true)) {
+    if (in_array($provider, ['GOOGLE', 'APPLE', 'EMAIL'], true)) {
         if ($providerSubject === null || $tenantId !== null || $objectId !== null) {
-            throw new InvalidArgumentException('Google/Apple identities require issuer + provider subject and no tenant/object identity.');
+            throw new InvalidArgumentException('Google/Apple/Email identities require issuer + provider subject and no tenant/object identity.');
         }
     } elseif ($tenantId === null || $objectId === null) {
         throw new InvalidArgumentException('Microsoft identities require tenant ID + object ID.');

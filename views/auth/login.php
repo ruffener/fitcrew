@@ -3,6 +3,8 @@ $isCreateIntent = ($entryIntent ?? 'signin') === 'create';
 $googleEnabled = (bool) ($googleAuthConfig['enabled'] ?? false);
 $microsoftVisible = (bool) ($microsoftAuthConfig['visible'] ?? false);
 $microsoftEnabled = (bool) ($microsoftAuthConfig['enabled'] ?? false);
+$emailRequestEndpoint = (string) ($emailAuthConfig['request_endpoint'] ?? '/auth/email/request.php');
+$emailCsrfToken = (string) ($emailAuthConfig['csrf_token'] ?? fc_csrf_token());
 ?>
 <section class="auth-card account-entry-card">
     <span class="status-chip status-chip-neutral"><span aria-hidden="true">○</span> Provider authentication</span>
@@ -38,6 +40,23 @@ $microsoftEnabled = (bool) ($microsoftAuthConfig['enabled'] ?? false);
                 <span class="provider-status">Setup required</span>
             </button>
         <?php endif; ?>
+
+        <form class="email-provider-form form-placeholder" method="post" action="<?= fc_e($emailRequestEndpoint) ?>">
+            <input type="hidden" name="csrf_token" value="<?= fc_e($emailCsrfToken) ?>">
+            <label for="fitcrew-email-auth">Continue with email</label>
+            <input
+                id="fitcrew-email-auth"
+                name="email"
+                type="email"
+                inputmode="email"
+                autocomplete="email"
+                maxlength="254"
+                placeholder="you@example.com"
+                required
+            >
+            <button class="button button-primary" type="submit">Email me a sign-in link</button>
+            <p class="provider-help">The one-time link expires in 15 minutes and must be opened in this browser.</p>
+        </form>
 
         <button class="provider-choice" type="button" disabled>
             <span class="provider-mark" aria-hidden="true">A</span>

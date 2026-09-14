@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/inc/bootstrap.php';
+require_once __DIR__ . '/inc/auth/email_magic_link.php';
 
 if (fc_is_logged_in()) {
     if (fc_auth_crew_invitation_continuation_session_public_id() !== null) {
@@ -37,8 +38,21 @@ $microsoftAuthConfig = [
     'enabled' => false,
     'reason' => 'Microsoft authentication setup is not complete yet.',
 ];
+$emailAuthConfig = [
+    'csrf_token' => fc_csrf_token(),
+    'request_endpoint' => '/auth/email/request.php',
+];
+$invitationLoginContext = null;
+try {
+    $invitationLoginContext = fc_auth_crew_invitation_continuation_login_context(fc_db());
+} catch (Throwable) {
+    fc_auth_crew_invitation_continuation_clear_session();
+}
+$invitationProviderAlreadyBound =
+    is_array($invitationLoginContext)
+    && (string) ($invitationLoginContext['continuation_status'] ?? '') === 'LOGIN_BOUND';
 
-if (fc_google_auth_enabled()) {
+if (fc_google_auth_enabled() && !$invitationProviderAlreadyBound) {
     try {
         $prepared = fc_google_prepare_login_transaction(fc_db());
         $googleAuthConfig = [
@@ -56,6 +70,8 @@ if (fc_google_auth_enabled()) {
         ]);
         $googleAuthConfig['reason'] = 'Google authentication is temporarily unavailable.';
     }
+} elseif ($invitationProviderAlreadyBound) {
+    $googleAuthConfig['reason'] = 'A sign-in choice is already in progress in this browser.';
 }
 
 
