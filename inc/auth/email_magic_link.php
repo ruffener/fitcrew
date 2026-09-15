@@ -62,7 +62,7 @@ function fc_email_magic_link_message(string $recipientEmail, string $url): array
 {
     $safeUrl = htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     $text = "Use this one-time link to sign in to FitCrew Challenge:\n\n" . $url . "\n\n" .
-        "The link expires in 15 minutes and works only in the browser where it was requested.\n" .
+        "The link expires in 15 minutes and may be opened in any browser or device.\n" .
         "Opening the link does not sign you in. You must explicitly continue on the confirmation page.\n\n" .
         "If you did not request this link, you can ignore this email.\n\nFitCrew Challenge";
     $html = '<!doctype html><html><body style="font-family:Arial,sans-serif;color:#13233a;line-height:1.5">' .
@@ -70,7 +70,7 @@ function fc_email_magic_link_message(string $recipientEmail, string $url): array
         '<h1 style="font-size:24px;margin:0 0 16px">Your FitCrew sign-in link</h1>' .
         '<p>Use this one-time link to continue to FitCrew Challenge.</p>' .
         '<p style="margin:28px 0"><a href="' . $safeUrl . '" style="background:#1e40af;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;display:inline-block;font-weight:700">Review Sign-In</a></p>' .
-        '<p style="font-size:14px;color:#5e6878">The link expires in 15 minutes and works only in the browser where it was requested. Opening it does not sign you in; you must explicitly continue.</p>' .
+        '<p style="font-size:14px;color:#5e6878">The link expires in 15 minutes and may be opened in any browser or device. Opening it does not sign you in; you must explicitly continue.</p>' .
         '<p style="font-size:14px;color:#5e6878">If the button does not work, open:<br>' . $safeUrl . '</p>' .
         '<p style="font-size:14px;color:#5e6878">If you did not request this link, you can ignore this email.</p>' .
         '</div></body></html>';
@@ -85,10 +85,10 @@ function fc_email_magic_link_message(string $recipientEmail, string $url): array
     ];
 }
 
-function fc_email_magic_link_flow_hash(string $emailSubject, string $browserBinding, string $scope): string
+function fc_email_magic_link_flow_hash(string $emailSubject, string $scope): string
 {
     return fc_secret_evidence_hash(
-        'EMAIL_MAGIC_LINK_V1' . "\0" . $emailSubject . "\0" . $browserBinding . "\0" . $scope
+        'EMAIL_MAGIC_LINK_V1' . "\0" . $emailSubject . "\0" . $scope
     );
 }
 
@@ -195,7 +195,7 @@ function fc_email_magic_link_issue(PDO $pdo, string $email, string $rawBrowserBi
     }
     $emailSubject = fc_email_magic_link_subject($email);
     if ($rawBrowserBinding === '') {
-        throw new InvalidArgumentException('Email magic-link browser binding is required.');
+        throw new InvalidArgumentException('Email magic-link request-browser evidence is required.');
     }
 
     $rawToken = fc_email_magic_link_token();
@@ -209,7 +209,7 @@ function fc_email_magic_link_issue(PDO $pdo, string $email, string $rawBrowserBi
         $destinationKey = $continuation === null
             ? 'APP_HOME'
             : FC_AUTH_CREW_INVITATION_DESTINATION;
-        $flowHash = fc_email_magic_link_flow_hash($emailSubject, $rawBrowserBinding, $scope);
+        $flowHash = fc_email_magic_link_flow_hash($emailSubject, $scope);
         $authTransaction = null;
         $activeChallenge = null;
 
@@ -335,12 +335,13 @@ function fc_email_magic_link_issue(PDO $pdo, string $email, string $rawBrowserBi
         } else {
             $replaceState = $pdo->prepare(
                 'UPDATE auth_transactions ' .
-                'SET state_hash = :state_hash, expires_at = :expires_at ' .
+                'SET state_hash = :state_hash, browser_session_binding_hash = :browser_hash, expires_at = :expires_at ' .
                 'WHERE id = :id AND intent = \'LOGIN\' AND expected_provider = \'EMAIL\' ' .
                 '  AND expected_user_id IS NULL AND consumed_at IS NULL'
             );
             $replaceState->execute([
                 ':state_hash' => fc_secret_evidence_hash($rawToken),
+                ':browser_hash' => fc_secret_evidence_hash($rawBrowserBinding),
                 ':expires_at' => $expiresAt->format('Y-m-d H:i:s.u'),
                 ':id' => (int) $authTransaction['id'],
             ]);
@@ -461,10 +462,9 @@ function fc_email_magic_link_request(
 function fc_email_magic_link_find_valid(
     PDO $pdo,
     string $rawToken,
-    string $rawBrowserBinding,
     bool $forUpdate = false
 ): ?array {
-    if (!fc_email_magic_link_token_valid_shape($rawToken) || $rawBrowserBinding === '') {
+    if (!fc_email_magic_link_token_valid_shape($rawToken)) {
         return null;
     }
     if ($forUpdate && !$pdo->inTransaction()) {
@@ -485,7 +485,6 @@ function fc_email_magic_link_find_valid(
         '  AND t.expected_user_id IS NULL AND t.consumed_at IS NULL ' .
         '  AND t.expires_at > CURRENT_TIMESTAMP(6) ' .
         '  AND t.state_hash = :state_hash ' .
-        '  AND t.browser_session_binding_hash = :browser_hash ' .
         'LIMIT 1';
     if ($forUpdate) {
         $sql .= ' FOR UPDATE';
@@ -495,16 +494,69 @@ function fc_email_magic_link_find_valid(
     $statement->execute([
         ':token_hash' => $evidenceHash,
         ':state_hash' => $evidenceHash,
-        ':browser_hash' => fc_secret_evidence_hash($rawBrowserBinding),
     ]);
     $row = $statement->fetch(PDO::FETCH_ASSOC);
 
     return $row === false ? null : $row;
 }
 
-function fc_email_magic_link_inspect(PDO $pdo, string $rawToken, string $rawBrowserBinding): bool
+function fc_email_magic_link_inspect(PDO $pdo, string $rawToken): bool
 {
-    return fc_email_magic_link_find_valid($pdo, $rawToken, $rawBrowserBinding, false) !== null;
+    return fc_email_magic_link_find_valid($pdo, $rawToken, false) !== null;
+}
+
+/**
+ * Transfers the EMAIL LOGIN transaction from its request-browser evidence to
+ * the browser that explicitly completes the bearer credential. This exception
+ * is scoped to EMAIL; OAuth/OIDC provider transaction binding is unchanged.
+ */
+function fc_email_magic_link_rebind_transaction_to_arrival(
+    PDO $pdo,
+    int $transactionId,
+    string $requestBrowserBindingHash,
+    string $arrivalBrowserBinding
+): void {
+    if (!$pdo->inTransaction()) {
+        throw new LogicException('EMAIL transaction arrival transfer requires an active database transaction.');
+    }
+    if ($arrivalBrowserBinding === '') {
+        throw new InvalidArgumentException('EMAIL arrival-browser evidence is required.');
+    }
+
+    $arrivalHash = fc_secret_evidence_hash($arrivalBrowserBinding);
+    if (hash_equals($requestBrowserBindingHash, $arrivalHash)) {
+        return;
+    }
+
+    $statement = $pdo->prepare(
+        'UPDATE auth_transactions ' .
+        'SET browser_session_binding_hash = :arrival_hash ' .
+        'WHERE id = :id AND intent = \'LOGIN\' AND expected_provider = \'EMAIL\' ' .
+        '  AND expected_user_id IS NULL AND consumed_at IS NULL ' .
+        '  AND browser_session_binding_hash = :request_hash'
+    );
+    $statement->execute([
+        ':arrival_hash' => $arrivalHash,
+        ':id' => $transactionId,
+        ':request_hash' => $requestBrowserBindingHash,
+    ]);
+    if ($statement->rowCount() !== 1) {
+        throw new DomainException('email_magic_link_invalid');
+    }
+}
+
+/**
+ * Applies opaque PHP-session continuation state only after SQL completion has
+ * committed. A caller-owned transaction must call this after its own commit.
+ *
+ * @param array<string,mixed> $result
+ */
+function fc_email_magic_link_apply_committed_arrival_context(array $result): void
+{
+    $publicId = $result['continuation_public_id'] ?? null;
+    if (is_string($publicId) && $publicId !== '') {
+        fc_auth_crew_invitation_continuation_set_session($publicId);
+    }
 }
 
 function fc_email_magic_link_ensure_verified_contact(PDO $pdo, int $userId, string $emailSubject): void
@@ -551,7 +603,7 @@ function fc_email_magic_link_ensure_verified_contact(PDO $pdo, int $userId, stri
     );
 }
 
-/** @return array{user:array<string,mixed>,identity:array<string,mixed>,new_account:bool,destination:string} */
+/** @return array{user:array<string,mixed>,identity:array<string,mixed>,new_account:bool,destination:string,continuation_public_id:?string} */
 function fc_email_magic_link_complete(
     PDO $pdo,
     string $rawToken,
@@ -566,14 +618,14 @@ function fc_email_magic_link_complete(
     }
 
     try {
-        $challenge = fc_email_magic_link_find_valid($pdo, $rawToken, $rawBrowserBinding, true);
+        $challenge = fc_email_magic_link_find_valid($pdo, $rawToken, true);
         if ($challenge === null) {
             throw new DomainException('email_magic_link_invalid');
         }
 
         $invitationContinuation = null;
         if ((string) $challenge['post_auth_destination_key'] === FC_AUTH_CREW_INVITATION_DESTINATION) {
-            $invitationContinuation = fc_auth_crew_invitation_continuation_for_transaction(
+            $invitationContinuation = fc_auth_crew_invitation_continuation_for_email_transaction(
                 $pdo,
                 (int) $challenge['auth_transaction_id'],
                 true
@@ -672,28 +724,6 @@ function fc_email_magic_link_complete(
         ]);
         fc_email_magic_link_ensure_verified_contact($pdo, (int) $user['id'], $emailSubject);
 
-        $transactionConsumed = fc_auth_transaction_consume(
-            $pdo,
-            (string) $challenge['transaction_public_id'],
-            'LOGIN',
-            'EMAIL',
-            $rawToken,
-            $rawBrowserBinding,
-            null
-        );
-        if (!$transactionConsumed) {
-            throw new DomainException('email_magic_link_invalid');
-        }
-        $consumeChallenge = $pdo->prepare(
-            'UPDATE email_magic_link_challenges ' .
-            'SET challenge_status = \'CONSUMED\', consumed_at = CURRENT_TIMESTAMP(6), active_flow_key_hash = NULL ' .
-            'WHERE id = :id AND challenge_status = \'ISSUED\' AND consumed_at IS NULL'
-        );
-        $consumeChallenge->execute([':id' => (int) $challenge['id']]);
-        if ($consumeChallenge->rowCount() !== 1) {
-            throw new DomainException('email_magic_link_invalid');
-        }
-
         $sessionRecord = fc_session_record_create_with_policy(
             $pdo,
             (int) $user['id'],
@@ -703,9 +733,10 @@ function fc_email_magic_link_complete(
             $rawClientNetworkEvidence
         );
         if ($invitationContinuation !== null) {
-            fc_auth_crew_invitation_continuation_mark_authenticated(
+            fc_auth_crew_invitation_continuation_transfer_email_arrival(
                 $pdo,
                 (int) $invitationContinuation['id'],
+                $rawBrowserBinding,
                 (int) $user['id'],
                 (int) $sessionRecord['id'],
                 $newAccount
@@ -717,6 +748,34 @@ function fc_email_magic_link_complete(
                     (int) $user['id']
                 );
             }
+        }
+
+        fc_email_magic_link_rebind_transaction_to_arrival(
+            $pdo,
+            (int) $challenge['auth_transaction_id'],
+            (string) $challenge['browser_session_binding_hash'],
+            $rawBrowserBinding
+        );
+        $consumeChallenge = $pdo->prepare(
+            'UPDATE email_magic_link_challenges ' .
+            'SET challenge_status = \'CONSUMED\', consumed_at = CURRENT_TIMESTAMP(6), active_flow_key_hash = NULL ' .
+            'WHERE id = :id AND challenge_status = \'ISSUED\' AND consumed_at IS NULL'
+        );
+        $consumeChallenge->execute([':id' => (int) $challenge['id']]);
+        if ($consumeChallenge->rowCount() !== 1) {
+            throw new DomainException('email_magic_link_invalid');
+        }
+        $transactionConsumed = fc_auth_transaction_consume(
+            $pdo,
+            (string) $challenge['transaction_public_id'],
+            'LOGIN',
+            'EMAIL',
+            $rawToken,
+            $rawBrowserBinding,
+            null
+        );
+        if (!$transactionConsumed) {
+            throw new DomainException('email_magic_link_invalid');
         }
 
         fc_audit_event_write($pdo, [
@@ -748,6 +807,9 @@ function fc_email_magic_link_complete(
             'identity' => $identity,
             'new_account' => $newAccount,
             'destination' => $destination,
+            'continuation_public_id' => $invitationContinuation === null
+                ? null
+                : (string) $invitationContinuation['public_id'],
         ];
     } catch (Throwable $error) {
         if ($ownsTransaction && $pdo->inTransaction()) {

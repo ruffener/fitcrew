@@ -6,7 +6,10 @@ Purpose: `CREW_INVITATION_ALPHA_ENTRY_PROOF_V1`
 
 Fixed destination: `CREW_INVITATION_ACCEPTANCE` → `/crew-invite.php`
 
-This contract carries a Website-validated Crew invitation through Google sign-in without making invitation email an identity claim. Auth never receives or stores the raw invitation token or invited email, and Auth never creates Crew membership.
+This contract carries a Website-validated Crew invitation through Google or
+EMAIL sign-in without making invitation email an identity claim. Auth never
+receives or stores the raw invitation token or invited email, and Auth never
+creates Crew membership.
 
 ## Migration 0310
 
@@ -105,6 +108,29 @@ A duplicate logical-invitation claim fails before user creation. Resend generati
 
 Outside this continuation path, the existing Google prelaunch allowlist remains enforced.
 
+## EMAIL cross-browser handoff
+
+EMAIL magic-link completion uses a short-lived, 256-bit, single-use bearer
+credential. Unlike OAuth/OIDC providers, the original requesting-browser
+binding is not an EMAIL completion predicate.
+
+After the arrival browser renders the scanner-safe confirmation page and sends
+its own CSRF-protected explicit POST, Auth locks the challenge, exact EMAIL
+LOGIN transaction, and exact associated continuation. Within one transaction,
+Auth freshly validates Website invitation state, resolves or creates the
+authorized EMAIL identity, creates the FitCrew session, transfers the
+continuation binding to the arrival browser/session, and consumes the challenge
+and LOGIN transaction.
+
+Only after the database commit does Auth place the opaque continuation public
+ID into the arrival PHP session. The original browser may retain an obsolete
+opaque pointer, but its database binding no longer matches and it cannot read
+or consume the transferred continuation.
+
+This EMAIL-specific handoff does not modify Google browser binding. The fixed
+destination remains `/crew-invite.php`, and Website still performs explicit
+invitation acceptance and Crew membership activation.
+
 ## Auth → Website result
 
 On `/crew-invite.php`, Website reads:
@@ -183,7 +209,8 @@ fc_rate_limit_cleanup(PDO $pdo, int $retentionSeconds = 86400): int;
 - One logical invitation public ID admits at most one new account across every continuation and generation.
 - A failed transaction leaves no admission claim, user, identity, or session.
 - Auth does not modify `crew_invitations` or `crew_memberships`.
-- Website does not control Auth browser binding, transactions, sessions, or admission claims.
+- Website does not control Auth browser binding, EMAIL arrival transfer,
+  transactions, sessions, or admission claims.
 - No arbitrary return URL is accepted.
 
 ## Proof commands

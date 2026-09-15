@@ -26,7 +26,7 @@
     <p class="eyebrow">FitCrew Challenge</p>
     <section id="email-link-confirm" hidden>
         <h1>Confirm your sign-in.</h1>
-        <p>Continue only if you requested this email link in this browser.</p>
+        <p>Continue only if you requested this email link.</p>
         <form method="post" action="/auth/email/complete.php">
             <input type="hidden" name="csrf_token" value="<?= fc_e($csrfToken) ?>">
             <input id="email-link-token" type="hidden" name="token" value="">
@@ -36,7 +36,7 @@
     </section>
     <section id="email-link-invalid" hidden>
         <h1>This link cannot be used.</h1>
-        <p>It may be expired, replaced, already used, or opened in a different browser.</p>
+        <p>It may be invalid, expired, replaced, or already used.</p>
         <p><a href="/login.php">Request a new sign-in link</a></p>
     </section>
 </main>

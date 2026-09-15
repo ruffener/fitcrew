@@ -15,7 +15,7 @@ function fc_email_magic_link_complete_rejection(string $reason): never
         fc_email_magic_link_audit_rejection(fc_db(), $reason);
     } catch (Throwable) {
     }
-    fc_flash('error', 'This email sign-in link is invalid, expired, already used, or belongs to a different browser.');
+    fc_flash('error', 'This email sign-in link is invalid, expired, replaced, or already used.');
     fc_redirect('/login.php');
 }
 
@@ -65,6 +65,7 @@ try {
         $_SERVER['HTTP_USER_AGENT'] ?? null,
         $networkEvidence
     );
+    fc_email_magic_link_apply_committed_arrival_context($result);
     fc_redirect((string) $result['destination']);
 } catch (DomainException $error) {
     $reason = match ($error->getMessage()) {

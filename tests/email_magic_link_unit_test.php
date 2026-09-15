@@ -19,15 +19,20 @@ function emlu_assert(bool $condition, string $message): void
 
 try {
     $root = dirname(__DIR__);
-    $migration = file_get_contents($root . '/database/migrations/0330_add_email_magic_link_authentication.sql') ?: '';
-    $service = file_get_contents($root . '/inc/auth/email_magic_link.php') ?: '';
-    $request = file_get_contents($root . '/auth/email/request.php') ?: '';
-    $confirm = file_get_contents($root . '/auth/email/confirm.php') ?: '';
-    $complete = file_get_contents($root . '/auth/email/complete.php') ?: '';
-    $view = file_get_contents($root . '/views/auth/email_confirm.php') ?: '';
-    $login = file_get_contents($root . '/views/auth/login.php') ?: '';
-    $loginController = file_get_contents($root . '/login.php') ?: '';
-    $contracts = file_get_contents($root . '/inc/identity/contracts.php') ?: '';
+    $readSource = static function (string $path): string {
+        $contents = file_get_contents($path) ?: '';
+        return str_replace(["\r\n", "\r"], "\n", $contents);
+    };
+    $migration = $readSource($root . '/database/migrations/0330_add_email_magic_link_authentication.sql');
+    $service = $readSource($root . '/inc/auth/email_magic_link.php');
+    $continuations = $readSource($root . '/inc/auth/invitation_continuations.php');
+    $request = $readSource($root . '/auth/email/request.php');
+    $confirm = $readSource($root . '/auth/email/confirm.php');
+    $complete = $readSource($root . '/auth/email/complete.php');
+    $view = $readSource($root . '/views/auth/email_confirm.php');
+    $login = $readSource($root . '/views/auth/login.php');
+    $loginController = $readSource($root . '/login.php');
+    $contracts = $readSource($root . '/inc/identity/contracts.php');
 
     emlu_assert(in_array('EMAIL', FC_AUTH_PROVIDERS, true), 'EMAIL is absent from the Auth provider contract.');
     emlu_assert(
@@ -118,6 +123,40 @@ try {
             && !str_contains($service, "confirm.php?token="),
         'Raw token could enter an HTTP request/access log through the email URL.'
     );
+    emlu_assert(
+        str_contains($service, 'may be opened in any browser or device')
+            && !str_contains($service, 'works only in the browser where it was requested')
+            && !str_contains($login, 'must be opened in this browser'),
+        'Consumer copy still imposes the retired same-browser requirement.'
+    );
+    $findStart = strpos($service, 'function fc_email_magic_link_find_valid(');
+    $inspectStart = strpos($service, 'function fc_email_magic_link_inspect(');
+    emlu_assert(
+        $findStart !== false
+            && $inspectStart !== false
+            && $inspectStart > $findStart
+            && !str_contains(
+                substr($service, $findStart, $inspectStart - $findStart),
+                'browser_session_binding_hash = :browser_hash'
+            ),
+        'EMAIL bearer-token validation still requires requesting-browser equality.'
+    );
+    emlu_assert(
+        str_contains($service, 'fc_email_magic_link_rebind_transaction_to_arrival(')
+            && str_contains($service, 'fc_email_magic_link_apply_committed_arrival_context(')
+            && str_contains($complete, 'fc_email_magic_link_apply_committed_arrival_context($result)')
+            && str_contains($continuations, 'fc_auth_crew_invitation_continuation_for_email_transaction(')
+            && str_contains($continuations, 'fc_auth_crew_invitation_continuation_transfer_email_arrival('),
+        'Arrival-browser transaction/continuation transfer contract is incomplete.'
+    );
+    $consumeChallengeAt = strpos($service, '$consumeChallenge = $pdo->prepare(');
+    $consumeTransactionAt = strpos($service, '$transactionConsumed = fc_auth_transaction_consume(');
+    emlu_assert(
+        $consumeChallengeAt !== false
+            && $consumeTransactionAt !== false
+            && $consumeChallengeAt < $consumeTransactionAt,
+        'EMAIL challenge is not consumed before its exact LOGIN transaction.'
+    );
 
     emlu_assert(
         str_contains($service, "fc_mail_send(")
@@ -168,6 +207,7 @@ try {
     fwrite(STDOUT, "- request POST / CSRF / same-origin / generic response: PASS\n");
     fwrite(STDOUT, "- email + network + invalid-completion rate limits: PASS\n");
     fwrite(STDOUT, "- scanner-safe GET / explicit protected completion POST: PASS\n");
+    fwrite(STDOUT, "- cross-browser bearer completion / arrival-session transfer: PASS\n");
     fwrite(STDOUT, "- fragment token excluded from GET/access logs: PASS\n");
     fwrite(STDOUT, "- no third-party token-page resources: PASS\n");
     fwrite(STDOUT, "- existing fc_mail_send transport / canonical subject: PASS\n");

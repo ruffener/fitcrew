@@ -55,7 +55,7 @@ $emailCsrfToken = (string) ($emailAuthConfig['csrf_token'] ?? fc_csrf_token());
                 required
             >
             <button class="button button-primary" type="submit">Email me a sign-in link</button>
-            <p class="provider-help">The one-time link expires in 15 minutes and must be opened in this browser.</p>
+            <p class="provider-help">The one-time link expires in 15 minutes and may be opened on any browser or device.</p>
         </form>
 
         <button class="provider-choice" type="button" disabled>

@@ -68,6 +68,19 @@ function emlf_begin_invitation(PDO $pdo, array $invitation): void
     );
 }
 
+function emlf_use_browser(string $label, ?string $continuationPublicId = null): string
+{
+    $binding = hash('sha256', 'EMAIL_MAGIC_LINK_V1_TEST_BROWSER:' . $label);
+    $_SESSION['fitcrew_auth_browser_binding'] = $binding;
+    if ($continuationPublicId === null) {
+        fc_auth_crew_invitation_continuation_clear_session();
+    } else {
+        fc_auth_crew_invitation_continuation_set_session($continuationPublicId);
+    }
+
+    return $binding;
+}
+
 /** @return array{id:int,token:string,email_subject:string,expires_at:string} */
 function emlf_issue(PDO $pdo, string $email): array
 {
@@ -218,7 +231,21 @@ try {
     $pdo->commit();
     $baselineMemberships = (int) $pdo->query('SELECT COUNT(*) FROM crew_memberships')->fetchColumn();
 
-    // Existing EMAIL identity resolves by issuer+mailbox and receives a session.
+    $invalidToken = fc_email_magic_link_token();
+    emlf_expect_domain(
+        fn () => fc_email_magic_link_complete(
+            $pdo,
+            $invalidToken,
+            emlf_use_browser('invalid-arrival'),
+            'email-magic-invalid-session'
+        ),
+        'email_magic_link_invalid',
+        'Unknown bearer token'
+    );
+
+    // Existing EMAIL identity resolves cross-browser by issuer+mailbox and
+    // receives a session in the arrival browser.
+    $existingRequestBrowser = emlf_use_browser('existing-request-desktop');
     $first = emlf_issue($pdo, 'EMAIL-MAGIC-EXISTING@EXAMPLE.TEST');
     $stored = $pdo->prepare('SELECT token_hash,email_subject FROM email_magic_link_challenges WHERE id=:id');
     $stored->execute([':id' => (int) $first['id']]);
@@ -230,10 +257,13 @@ try {
         'Stored token evidence is incorrect.'
     );
     emlf_assert($storedRow['email_subject'] === 'email-magic-existing@example.test', 'Mailbox subject was not canonicalized.');
+    $existingArrivalBrowser = emlf_use_browser('existing-arrival-mobile');
+    emlf_assert(!hash_equals($existingRequestBrowser, $existingArrivalBrowser), 'Cross-browser fixture reused one browser.');
+    emlf_assert(fc_email_magic_link_inspect($pdo, (string) $first['token']), 'Valid token failed arrival-browser inspection.');
     $existingResult = fc_email_magic_link_complete(
         $pdo,
         (string) $first['token'],
-        fc_auth_browser_binding(),
+        $existingArrivalBrowser,
         'email-magic-existing-session',
         'FitCrew EMAIL proof',
         '127.0.0.1'
@@ -242,7 +272,7 @@ try {
     emlf_assert((int) $existingResult['user']['id'] === (int) $existing['id'], 'Existing EMAIL identity resolved another user.');
     emlf_assert($existingResult['destination'] === '/app.php', 'Normal EMAIL login returned to the wrong destination.');
     emlf_expect_domain(
-        fn () => fc_email_magic_link_complete($pdo, (string) $first['token'], fc_auth_browser_binding(), 'email-magic-reuse-session'),
+        fn () => fc_email_magic_link_complete($pdo, (string) $first['token'], $existingRequestBrowser, 'email-magic-reuse-session'),
         'email_magic_link_invalid',
         'Consumed token reuse'
     );
@@ -253,15 +283,35 @@ try {
     emlf_assert($contact->fetchColumn() === 'VERIFIED', 'EMAIL proof did not verify contact on the same user.');
 
     // Replacement invalidates the older outstanding link for the same flow.
+    emlf_use_browser('replacement-request-a');
     $old = emlf_issue($pdo, 'email-magic-existing@example.test');
+    emlf_use_browser('replacement-request-b');
     $replacement = emlf_issue($pdo, 'email-magic-existing@example.test');
-    emlf_assert(!fc_email_magic_link_inspect($pdo, (string) $old['token'], fc_auth_browser_binding()), 'Replaced token remained valid.');
-    emlf_assert(fc_email_magic_link_inspect($pdo, (string) $replacement['token'], fc_auth_browser_binding()), 'Replacement token is invalid.');
-    fc_email_magic_link_complete($pdo, (string) $replacement['token'], fc_auth_browser_binding(), 'email-magic-replacement-session');
+    emlf_assert(!fc_email_magic_link_inspect($pdo, (string) $old['token']), 'Replaced token remained valid.');
+    emlf_assert(fc_email_magic_link_inspect($pdo, (string) $replacement['token']), 'Replacement token is invalid.');
+    $replacementArrival = emlf_use_browser('replacement-arrival');
+    fc_email_magic_link_complete($pdo, (string) $replacement['token'], $replacementArrival, 'email-magic-replacement-session');
+
+    // The cross-browser exception does not break the ordinary same-browser path.
+    $sameBrowser = emlf_use_browser('same-browser-request-arrival');
+    $sameBrowserChallenge = emlf_issue($pdo, 'email-magic-existing@example.test');
+    $sameBrowserResult = fc_email_magic_link_complete(
+        $pdo,
+        (string) $sameBrowserChallenge['token'],
+        $sameBrowser,
+        'email-magic-same-browser-session'
+    );
+    emlf_assert(
+        (int) $sameBrowserResult['user']['id'] === (int) $existing['id'],
+        'Same-browser EMAIL login regressed.'
+    );
 
     // Choosing EMAIL atomically replaces the exact unused Google transaction
     // which the invitation login page prepared for this same continuation.
+    $switchRequestBrowser = emlf_use_browser('provider-switch-request');
     emlf_begin_invitation($pdo, $invitations['D']);
+    $switchContinuationPublicId = fc_auth_crew_invitation_continuation_session_public_id();
+    emlf_assert(is_string($switchContinuationPublicId), 'Provider-switch continuation pointer is unavailable.');
     $preparedGoogle = fc_google_prepare_login_transaction($pdo);
     $preparedGoogleId = $pdo->prepare('SELECT id FROM auth_transactions WHERE public_id=:public_id');
     $preparedGoogleId->execute([':public_id' => (string) $preparedGoogle['transaction_id']]);
@@ -274,26 +324,60 @@ try {
             'LOGIN',
             'GOOGLE',
             (string) $preparedGoogle['state'],
-            fc_auth_browser_binding(),
+            $switchRequestBrowser,
             null
         ) === null,
         'EMAIL selection left the prior invitation-bound Google transaction usable.'
     );
+    $switchArrivalBrowser = emlf_use_browser('provider-switch-arrival');
     $switched = fc_email_magic_link_complete(
         $pdo,
         (string) $emailSwitch['token'],
-        fc_auth_browser_binding(),
+        $switchArrivalBrowser,
         'email-magic-provider-switch-session'
     );
+    fc_email_magic_link_apply_committed_arrival_context($switched);
     emlf_assert(
         $switched['new_account'] === false && $switched['destination'] === '/crew-invite.php',
         'EMAIL provider switch did not preserve exact invitation continuation.'
     );
+    emlf_assert(
+        fc_auth_crew_invitation_continuation_session_public_id() === $switchContinuationPublicId,
+        'Arrival browser did not receive the transferred continuation pointer.'
+    );
+    $arrivalContinuation = fc_auth_crew_invitation_continuation_find_for_browser(
+        $pdo,
+        $switchContinuationPublicId,
+        ['AUTHENTICATED']
+    );
+    emlf_assert($arrivalContinuation !== null, 'Arrival browser cannot resolve the transferred continuation.');
+    emlf_use_browser('provider-switch-request', $switchContinuationPublicId);
+    emlf_assert(
+        fc_auth_crew_invitation_continuation_find_for_browser(
+            $pdo,
+            $switchContinuationPublicId,
+            ['AUTHENTICATED']
+        ) === null,
+        'Original browser retained the transferred continuation binding.'
+    );
     fc_auth_crew_invitation_continuation_clear_session();
 
-    // Wrong browser and elapsed expiry both fail closed.
-    $wrongBrowser = emlf_issue($pdo, 'email-magic-wrong-browser@example.test');
-    emlf_assert(!fc_email_magic_link_inspect($pdo, (string) $wrongBrowser['token'], 'another-browser'), 'Wrong browser binding was accepted.');
+    // Desktop request to mobile-equivalent arrival succeeds; elapsed expiry
+    // still fails closed independently of browser identity.
+    emlf_use_browser('desktop-request');
+    $crossBrowser = emlf_issue($pdo, 'email-magic-existing@example.test');
+    $mobileArrival = emlf_use_browser('mobile-arrival');
+    $crossBrowserResult = fc_email_magic_link_complete(
+        $pdo,
+        (string) $crossBrowser['token'],
+        $mobileArrival,
+        'email-magic-mobile-arrival-session'
+    );
+    emlf_assert(
+        (int) $crossBrowserResult['user']['id'] === (int) $existing['id'],
+        'Desktop-to-mobile EMAIL login did not resolve the existing user.'
+    );
+    emlf_use_browser('expiry-request');
     $expired = emlf_issue($pdo, 'email-magic-expired@example.test');
     $expireChallenge = $pdo->prepare(
         'UPDATE email_magic_link_challenges SET created_at=DATE_SUB(CURRENT_TIMESTAMP(6), INTERVAL 15 MINUTE), ' .
@@ -305,13 +389,16 @@ try {
         'expires_at=DATE_SUB(CURRENT_TIMESTAMP(6), INTERVAL 1 SECOND) WHERE id=:id'
     );
     $expireTransaction->execute([':id' => emlf_transaction_id($pdo, (int) $expired['id'])]);
-    emlf_assert(!fc_email_magic_link_inspect($pdo, (string) $expired['token'], fc_auth_browser_binding()), 'Expired token remained valid.');
+    emlf_use_browser('expiry-arrival');
+    emlf_assert(!fc_email_magic_link_inspect($pdo, (string) $expired['token']), 'Expired token remained valid.');
 
     // A matching Google provider-email claim cannot select/link its user.
     $beforeUnknownUsers = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
+    emlf_use_browser('unknown-request');
     $unknown = emlf_issue($pdo, 'email-magic-match@example.test');
+    $unknownArrival = emlf_use_browser('unknown-arrival');
     emlf_expect_domain(
-        fn () => fc_email_magic_link_complete($pdo, (string) $unknown['token'], fc_auth_browser_binding(), 'email-magic-unknown-session'),
+        fn () => fc_email_magic_link_complete($pdo, (string) $unknown['token'], $unknownArrival, 'email-magic-unknown-session'),
         'prelaunch_new_account_denied',
         'Unknown EMAIL identity outside invitation'
     );
@@ -323,14 +410,19 @@ try {
     emlf_assert((int) $emailIdentityCount->fetchColumn() === 0, 'Google provider email auto-linked an EMAIL identity.');
 
     // One valid invitation admits one EMAIL user without comparing invitation email.
+    emlf_use_browser('admission-request');
     emlf_begin_invitation($pdo, $invitations['A']);
+    $admissionContinuationPublicId = fc_auth_crew_invitation_continuation_session_public_id();
+    emlf_assert(is_string($admissionContinuationPublicId), 'Admission continuation pointer is unavailable.');
     $admission = emlf_issue($pdo, 'email-magic-new@example.test');
+    $admissionArrivalBrowser = emlf_use_browser('admission-arrival');
     $admitted = fc_email_magic_link_complete(
         $pdo,
         (string) $admission['token'],
-        fc_auth_browser_binding(),
+        $admissionArrivalBrowser,
         'email-magic-admitted-session'
     );
+    fc_email_magic_link_apply_committed_arrival_context($admitted);
     $fixtureUserIds[] = (int) $admitted['user']['id'];
     emlf_assert($admitted['new_account'] === true, 'Valid invitation did not admit a new EMAIL identity.');
     emlf_assert($admitted['destination'] === '/crew-invite.php', 'Invitation EMAIL login returned to the wrong path.');
@@ -338,9 +430,27 @@ try {
     $contact->execute([':user_id' => (int) $admitted['user']['id'], ':email' => 'email-magic-new@example.test']);
     emlf_assert($contact->fetchColumn() === 'VERIFIED', 'Admitted EMAIL user lacks its verified same-user contact.');
     emlf_assert((int) $pdo->query('SELECT COUNT(*) FROM crew_memberships')->fetchColumn() === $baselineMemberships, 'Auth created Crew membership.');
+    $continuationBinding = $pdo->prepare(
+        'SELECT browser_session_binding_hash FROM auth_invitation_continuations WHERE public_id=:public_id'
+    );
+    $continuationBinding->execute([':public_id' => $admissionContinuationPublicId]);
+    emlf_assert(
+        hash_equals(fc_secret_evidence_hash($admissionArrivalBrowser), (string) $continuationBinding->fetchColumn()),
+        'Invitation continuation did not transfer to the arrival browser.'
+    );
+    emlf_use_browser('admission-request', $admissionContinuationPublicId);
+    emlf_assert(
+        fc_auth_crew_invitation_continuation_find_for_browser(
+            $pdo,
+            $admissionContinuationPublicId,
+            ['AUTHENTICATED']
+        ) === null,
+        'Original admission browser retained post-transfer authority.'
+    );
 
     // The same logical invitation cannot admit a second account through Google.
     fc_auth_crew_invitation_continuation_clear_session();
+    emlf_use_browser('second-provider-request');
     emlf_begin_invitation($pdo, $invitations['A']);
     $google = fc_google_prepare_login_transaction($pdo);
     $googleTransactionId = $pdo->prepare('SELECT id FROM auth_transactions WHERE public_id=:public_id');
@@ -369,39 +479,55 @@ try {
     fc_auth_crew_invitation_continuation_clear_session();
 
     // A caller rollback removes the admission claim/account/session and leaves a legitimate retry.
+    $rollbackRequestBrowser = emlf_use_browser('rollback-request');
     emlf_begin_invitation($pdo, $invitations['B']);
     $rollbackChallenge = emlf_issue($pdo, 'email-magic-rollback@example.test');
+    $rollbackArrivalBrowser = emlf_use_browser('rollback-arrival');
     $beforeRollbackUsers = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
     $pdo->beginTransaction();
     $rolledBack = fc_email_magic_link_complete(
         $pdo,
         (string) $rollbackChallenge['token'],
-        fc_auth_browser_binding(),
+        $rollbackArrivalBrowser,
         'email-magic-rollback-session-1'
     );
     emlf_assert($rolledBack['new_account'] === true, 'Rollback attempt did not reach provisional success.');
     $pdo->rollBack();
     emlf_assert((int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === $beforeRollbackUsers, 'Rolled-back admission left a user.');
-    emlf_assert(fc_email_magic_link_inspect($pdo, (string) $rollbackChallenge['token'], fc_auth_browser_binding()), 'Rollback burned the magic link.');
+    emlf_assert(fc_email_magic_link_inspect($pdo, (string) $rollbackChallenge['token']), 'Rollback burned the magic link.');
+    $rollbackTransactionBinding = $pdo->prepare(
+        'SELECT t.browser_session_binding_hash FROM auth_transactions t ' .
+        'JOIN email_magic_link_challenges c ON c.auth_transaction_id=t.id WHERE c.id=:id'
+    );
+    $rollbackTransactionBinding->execute([':id' => (int) $rollbackChallenge['id']]);
+    emlf_assert(
+        hash_equals(fc_secret_evidence_hash($rollbackRequestBrowser), (string) $rollbackTransactionBinding->fetchColumn()),
+        'Rollback retained the provisional arrival-browser transaction binding.'
+    );
+    $rollbackRetryBrowser = emlf_use_browser('rollback-retry-arrival');
     $retry = fc_email_magic_link_complete(
         $pdo,
         (string) $rollbackChallenge['token'],
-        fc_auth_browser_binding(),
+        $rollbackRetryBrowser,
         'email-magic-rollback-session-2'
     );
+    fc_email_magic_link_apply_committed_arrival_context($retry);
     $fixtureUserIds[] = (int) $retry['user']['id'];
     emlf_assert($retry['new_account'] === true, 'Legitimate retry after rollback failed.');
 
     // A federated email match inside a valid invitation still creates a distinct EMAIL user.
     fc_auth_crew_invitation_continuation_clear_session();
+    emlf_use_browser('federated-request');
     emlf_begin_invitation($pdo, $invitations['C']);
     $federatedMatch = emlf_issue($pdo, 'email-magic-match@example.test');
+    $federatedArrival = emlf_use_browser('federated-arrival');
     $matchResult = fc_email_magic_link_complete(
         $pdo,
         (string) $federatedMatch['token'],
-        fc_auth_browser_binding(),
+        $federatedArrival,
         'email-magic-federated-match-session'
     );
+    fc_email_magic_link_apply_committed_arrival_context($matchResult);
     $fixtureUserIds[] = (int) $matchResult['user']['id'];
     emlf_assert((int) $matchResult['user']['id'] !== (int) $googleOwner['id'], 'Matching Google email merged users.');
 
@@ -445,8 +571,11 @@ try {
     fwrite(STDOUT, "- canonical issuer+mailbox identity / verified same-user contact: PASS\n");
     fwrite(STDOUT, "- hash-only token evidence / raw token absent from audit: PASS\n");
     fwrite(STDOUT, "- consumed / replaced / expired token rejection: PASS\n");
+    fwrite(STDOUT, "- invalid token rejection / same-browser compatibility: PASS\n");
     fwrite(STDOUT, "- explicit EMAIL choice replaces exact unused provider transaction: PASS\n");
-    fwrite(STDOUT, "- wrong browser binding rejection: PASS\n");
+    fwrite(STDOUT, "- request browser A → arrival browser B succeeds: PASS\n");
+    fwrite(STDOUT, "- desktop → mobile-equivalent returning login: PASS\n");
+    fwrite(STDOUT, "- invitation continuation transferred / original browser rejected: PASS\n");
     fwrite(STDOUT, "- unknown EMAIL identity outside invitation creates nothing: PASS\n");
     fwrite(STDOUT, "- invitation-bound new EMAIL user / fixed return: PASS\n");
     fwrite(STDOUT, "- invited email is not compared with EMAIL subject: PASS\n");

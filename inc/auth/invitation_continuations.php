@@ -193,6 +193,14 @@ function fc_auth_crew_invitation_continuation_clear_session(?string $expectedPub
     }
 }
 
+function fc_auth_crew_invitation_continuation_set_session(string $publicId): void
+{
+    if (!fc_public_id_is_valid($publicId)) {
+        throw new InvalidArgumentException('Invitation continuation public ID is invalid.');
+    }
+    $_SESSION[FC_AUTH_CREW_INVITATION_SESSION_KEY] = $publicId;
+}
+
 /** @return array<string,mixed>|null */
 function fc_auth_crew_invitation_continuation_find_for_browser(
     PDO $pdo,
@@ -342,6 +350,82 @@ function fc_auth_crew_invitation_continuation_for_transaction(
     $row = $statement->fetch(PDO::FETCH_ASSOC);
 
     return $row === false ? null : $row;
+}
+
+/**
+ * EMAIL-only lookup for a bearer credential arriving in a different browser.
+ * The exact bound LOGIN transaction remains required; only request-browser
+ * equality is deferred until the atomic arrival transfer.
+ *
+ * @return array<string,mixed>|null
+ */
+function fc_auth_crew_invitation_continuation_for_email_transaction(
+    PDO $pdo,
+    int $authTransactionId,
+    bool $forUpdate = false
+): ?array {
+    if ($forUpdate && !$pdo->inTransaction()) {
+        throw new LogicException('Locking an EMAIL invitation continuation requires an active database transaction.');
+    }
+    $sql =
+        'SELECT * FROM auth_invitation_continuations ' .
+        'WHERE auth_transaction_id = :transaction_id ' .
+        '  AND purpose = :purpose ' .
+        '  AND continuation_status = \'LOGIN_BOUND\' ' .
+        '  AND expires_at > CURRENT_TIMESTAMP(6) ' .
+        'LIMIT 1';
+    if ($forUpdate) {
+        $sql .= ' FOR UPDATE';
+    }
+    $statement = $pdo->prepare($sql);
+    $statement->execute([
+        ':transaction_id' => $authTransactionId,
+        ':purpose' => FC_AUTH_CREW_INVITATION_PURPOSE,
+    ]);
+    $row = $statement->fetch(PDO::FETCH_ASSOC);
+
+    return $row === false ? null : $row;
+}
+
+/**
+ * EMAIL-only atomic handoff to the arrival browser and newly created session.
+ * Generic provider continuations retain their existing browser predicate.
+ */
+function fc_auth_crew_invitation_continuation_transfer_email_arrival(
+    PDO $pdo,
+    int $continuationId,
+    string $arrivalBrowserBinding,
+    int $userId,
+    int $sessionRecordId,
+    bool $admittedNewAccount
+): void {
+    if (!$pdo->inTransaction()) {
+        throw new LogicException('EMAIL invitation arrival transfer requires an active database transaction.');
+    }
+    if ($arrivalBrowserBinding === '') {
+        throw new InvalidArgumentException('EMAIL arrival-browser evidence is required.');
+    }
+
+    $statement = $pdo->prepare(
+        'UPDATE auth_invitation_continuations ' .
+        'SET browser_session_binding_hash = :arrival_hash, ' .
+        '    authenticated_user_id = :user_id, authenticated_session_id = :session_id, ' .
+        '    continuation_status = \'AUTHENTICATED\', authenticated_at = CURRENT_TIMESTAMP(6), ' .
+        '    admission_consumed_at = CASE WHEN :admitted = 1 THEN CURRENT_TIMESTAMP(6) ELSE admission_consumed_at END ' .
+        'WHERE id = :id AND continuation_status = \'LOGIN_BOUND\' ' .
+        '  AND authenticated_user_id IS NULL AND authenticated_session_id IS NULL ' .
+        '  AND expires_at > CURRENT_TIMESTAMP(6)'
+    );
+    $statement->execute([
+        ':arrival_hash' => fc_secret_evidence_hash($arrivalBrowserBinding),
+        ':user_id' => $userId,
+        ':session_id' => $sessionRecordId,
+        ':admitted' => $admittedNewAccount ? 1 : 0,
+        ':id' => $continuationId,
+    ]);
+    if ($statement->rowCount() !== 1) {
+        throw new DomainException('invitation_continuation_already_used');
+    }
 }
 
 function fc_auth_crew_invitation_continuation_mark_authenticated(

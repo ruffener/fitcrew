@@ -41,7 +41,7 @@ The table stores:
 - the owning Auth LOGIN transaction;
 - canonical issuer and EMAIL subject;
 - HMAC evidence of the 256-bit token;
-- HMAC evidence used to enforce one active challenge per browser/email/flow;
+- HMAC evidence used to enforce one active challenge per email/flow;
 - `ISSUED`, `CONSUMED`, or `REPLACED` lifecycle timestamps;
 - a maximum 900-second expiry.
 
@@ -61,11 +61,16 @@ evidence and marks the prior challenge `REPLACED`, making the old URL unusable.
    service and `hello@fitcrewchallenge.com` mail contract.
 5. A GET of the link only renders confirmation.
 6. The participant explicitly submits the protected confirmation POST.
-7. Auth locks and validates the challenge, transaction, browser binding, expiry,
-   account/identity status, and—where applicable—the current Website invitation
-   snapshot.
-8. Auth consumes the transaction and challenge and creates a server-side
-   FitCrew session in the same database transaction.
+7. Auth locks and validates the bearer challenge, exact EMAIL LOGIN transaction,
+   expiry, account/identity status, and—where applicable—the current Website
+   invitation snapshot. Request-browser equality is not an EMAIL completion
+   predicate.
+8. Auth creates a server-side FitCrew session for the arrival browser. For an
+   invitation flow, it atomically transfers the continuation binding to that
+   arrival browser, user, and session.
+9. Auth consumes the challenge and exact EMAIL LOGIN transaction in that same
+   database transaction. After commit, it places only the opaque continuation
+   ID in the arrival PHP session and redirects to the fixed destination.
 
 For an existing EMAIL identity, the canonical user is reused. For an unknown
 EMAIL identity, account creation is denied unless a current Family Alpha Crew
@@ -88,7 +93,13 @@ FitCrew user.
 - No new environment setting is introduced.
 - `.env` and `.env.example` are untouched.
 - Delivery uses the existing configured mail driver and Postmark adapter.
-- Cross-device/browser handoff is intentionally unsupported for Family Alpha.
+- A valid EMAIL bearer link may be completed in another browser or device. The
+  confirmation POST remains same-origin and CSRF protected in the arrival
+  browser.
+- Invitation continuation transfer is committed atomically with EMAIL token,
+  LOGIN transaction, identity, and FitCrew-session state. Its former browser
+  binding is rejected after transfer.
+- Google, Microsoft, and future Apple OAuth/OIDC browser binding is unchanged.
 - Invalid public completion responses disclose no account-existence detail.
 - Raw token, raw network evidence, and mail-delivery secrets are excluded from
   audit metadata and application logs.
