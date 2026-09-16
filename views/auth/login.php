@@ -24,8 +24,10 @@ $emailCsrfToken = (string) ($emailAuthConfig['csrf_token'] ?? fc_csrf_token());
                 data-transaction-id="<?= fc_e((string) $googleAuthConfig['transaction_id']) ?>"
                 data-state="<?= fc_e((string) $googleAuthConfig['state']) ?>"
                 data-nonce="<?= fc_e((string) $googleAuthConfig['nonce']) ?>"
+                data-expires-at="<?= fc_e((string) $googleAuthConfig['expires_at']) ?>"
                 data-csrf-token="<?= fc_e((string) $googleAuthConfig['csrf_token']) ?>"
                 data-endpoint="<?= fc_e((string) $googleAuthConfig['endpoint']) ?>"
+                data-refresh-endpoint="<?= fc_e((string) $googleAuthConfig['refresh_endpoint']) ?>"
             >
                 <div id="fitcrew-google-button" class="google-button-host" aria-label="Continue with Google"></div>
                 <p id="fitcrew-google-message" class="provider-help" aria-live="polite">Loading secure Google sign-in…</p>

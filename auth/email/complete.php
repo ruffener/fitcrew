@@ -15,7 +15,10 @@ function fc_email_magic_link_complete_rejection(string $reason): never
         fc_email_magic_link_audit_rejection(fc_db(), $reason);
     } catch (Throwable) {
     }
-    fc_flash('error', 'This email sign-in link is invalid, expired, replaced, or already used.');
+    $message = $reason === 'account_reconciliation_required'
+        ? 'That verified email is already associated with another FitCrew sign-in record. Account reconciliation is required; no account was changed.'
+        : 'This email sign-in link is invalid, expired, replaced, or already used.';
+    fc_flash('error', $message);
     fc_redirect('/login.php');
 }
 
@@ -70,6 +73,8 @@ try {
 } catch (DomainException $error) {
     $reason = match ($error->getMessage()) {
         'fitcrew_account_access_denied' => 'account_denied',
+        'account_reconciliation_required',
+        'canonical_verified_email_conflict' => 'account_reconciliation_required',
         'prelaunch_new_account_denied' => 'prelaunch_denied',
         'prelaunch_invitation_denied',
         'prelaunch_invitation_admission_claimed',

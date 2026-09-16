@@ -167,6 +167,57 @@ function fc_auth_identity_find_microsoft(PDO $pdo, string $tenantId, string $obj
     return $row === false ? null : $row;
 }
 
+/**
+ * Provider-supplied email is non-authoritative. This lookup exists only to
+ * detect possible duplicate-account reconciliation conflicts.
+ *
+ * @return list<array{user_id:int,provider_key:string,provider_email_verified:?int}>
+ */
+function fc_auth_identity_email_evidence_owners(PDO $pdo, string $email): array
+{
+    $canonical = fc_contact_email_canonicalize($email);
+    $statement = $pdo->prepare(
+        'SELECT DISTINCT user_id, provider_key, provider_email_verified ' .
+        'FROM user_auth_identities ' .
+        'WHERE provider_key <> \'EMAIL\' ' .
+        '  AND email_at_provider IS NOT NULL ' .
+        '  AND LOWER(TRIM(email_at_provider)) = :canonical ' .
+        'ORDER BY user_id, provider_key'
+    );
+    $statement->execute([':canonical' => $canonical]);
+
+    return array_map(
+        static fn (array $row): array => [
+            'user_id' => (int) $row['user_id'],
+            'provider_key' => (string) $row['provider_key'],
+            'provider_email_verified' => $row['provider_email_verified'] === null
+                ? null
+                : (int) $row['provider_email_verified'],
+        ],
+        $statement->fetchAll(PDO::FETCH_ASSOC)
+    );
+}
+
+/**
+ * Future Add Sign-In Method flows must use a LINK_IDENTITY transaction bound
+ * to the authenticated user. Existing ownership is never transferred.
+ */
+function fc_auth_identity_assert_link_target(
+    PDO $pdo,
+    string $provider,
+    string $issuer,
+    string $providerSubject,
+    int $expectedUserId
+): void {
+    if (!$pdo->inTransaction()) {
+        throw new LogicException('Identity-link ownership checks require an active transaction.');
+    }
+    $identity = fc_auth_identity_find_oidc($pdo, $provider, $issuer, $providerSubject, true);
+    if ($identity !== null && (int) $identity['user_id'] !== $expectedUserId) {
+        throw new DomainException('account_reconciliation_required');
+    }
+}
+
 function fc_auth_identity_update_provider_claims(PDO $pdo, int $identityId, array $claims): void
 {
     $providerEmailVerified = fc_provider_email_verified_claim($claims['provider_email_verified'] ?? null);
