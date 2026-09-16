@@ -21,60 +21,229 @@ function fc_google_random_token(int $bytes = 32): string
     return rtrim(strtr(base64_encode(random_bytes($bytes)), '+/', '-_'), '=');
 }
 
-/** @return array{transaction_id:string,state:string,nonce:string,client_id:string} */
-function fc_google_prepare_login_transaction(PDO $pdo): array
-{
+/** @return array{transaction_id:string,state:string,nonce:string,expires_at:string,client_id:string} */
+function fc_google_create_login_transaction(
+    PDO $pdo,
+    string $browserBinding,
+    string $destinationKey,
+    ?array $continuation = null
+): array {
     $clientId = fc_google_auth_client_id();
     if ($clientId === '') {
         throw new RuntimeException('GOOGLE_AUTH_CLIENT_ID is not configured.');
     }
-
     $state = fc_google_random_token();
     $nonce = fc_google_random_token();
-    $browserBinding = fc_auth_browser_binding();
-    $continuation = fc_auth_crew_invitation_continuation_pending_for_login($pdo);
-    $destinationKey = $continuation === null
-        ? 'APP_HOME'
-        : FC_AUTH_CREW_INVITATION_DESTINATION;
+    $ttlSeconds = null;
+    if ($continuation !== null) {
+        $remaining = (new DateTimeImmutable((string) $continuation['expires_at'], new DateTimeZone('UTC')))
+            ->getTimestamp() - time();
+        if ($remaining < 30) {
+            throw new DomainException('invitation_continuation_invalid');
+        }
+        $ttlSeconds = min((int) fc_env('AUTH_TRANSACTION_TTL_SECONDS', 600), $remaining);
+    }
 
-    $ownsTransaction = $continuation !== null && !$pdo->inTransaction();
+    $transaction = fc_auth_transaction_create(
+        $pdo,
+        'LOGIN',
+        'GOOGLE',
+        null,
+        $state,
+        $browserBinding,
+        $destinationKey,
+        $nonce,
+        null,
+        $ttlSeconds
+    );
+    if ($continuation !== null) {
+        fc_auth_crew_invitation_continuation_bind_login_transaction(
+            $pdo,
+            (string) $continuation['public_id'],
+            (int) $transaction['id']
+        );
+    }
+
+    return [
+        'transaction_id' => (string) $transaction['public_id'],
+        'state' => $state,
+        'nonce' => $nonce,
+        'expires_at' => (string) $transaction['expires_at'],
+        'client_id' => $clientId,
+    ];
+}
+
+/** @return array<string,mixed> */
+function fc_google_validate_continuation_for_refresh(PDO $pdo, array $continuation): array
+{
+    $snapshot = fc_auth_crew_invitation_product_snapshot(
+        $pdo,
+        (string) $continuation['invitation_public_id'],
+        (int) $continuation['invitation_generation'],
+        false
+    );
+    if ($snapshot === null) {
+        throw new DomainException('invitation_continuation_product_invalid');
+    }
+
+    return $continuation;
+}
+
+/** @return array{transaction_id:string,state:string,nonce:string,expires_at:string,client_id:string} */
+function fc_google_prepare_login_transaction(PDO $pdo): array
+{
+    $browserBinding = fc_auth_browser_binding();
+    $continuationPointer = fc_auth_crew_invitation_continuation_session_public_id();
+    $ownsTransaction = !$pdo->inTransaction();
     if ($ownsTransaction) {
         $pdo->beginTransaction();
     }
+
     try {
-        $transaction = fc_auth_transaction_create(
+        $continuation = fc_auth_crew_invitation_continuation_login_context($pdo, true);
+        if ($continuation !== null && (string) $continuation['continuation_status'] === 'LOGIN_BOUND') {
+            $statement = $pdo->prepare(
+                'SELECT id, intent, expected_provider, consumed_at, browser_session_binding_hash ' .
+                'FROM auth_transactions WHERE id = :id LIMIT 1 FOR UPDATE'
+            );
+            $statement->execute([':id' => (int) $continuation['auth_transaction_id']]);
+            $bound = $statement->fetch(PDO::FETCH_ASSOC);
+            if (
+                $bound === false
+                || (string) $bound['intent'] !== 'LOGIN'
+                || (string) $bound['expected_provider'] !== 'GOOGLE'
+                || $bound['consumed_at'] !== null
+                || !hash_equals(
+                    (string) $bound['browser_session_binding_hash'],
+                    fc_secret_evidence_hash($browserBinding)
+                )
+            ) {
+                throw new DomainException('auth_provider_choice_in_progress');
+            }
+            fc_google_validate_continuation_for_refresh($pdo, $continuation);
+            if (!fc_auth_transaction_retire_unused($pdo, (int) $bound['id'])) {
+                throw new DomainException('auth_transaction_refresh_unavailable');
+            }
+            fc_auth_crew_invitation_continuation_release_login_transaction(
+                $pdo,
+                (int) $continuation['id'],
+                (int) $bound['id']
+            );
+            $continuation['continuation_status'] = 'ISSUED';
+            $continuation['auth_transaction_id'] = null;
+        }
+
+        $destinationKey = $continuation === null
+            ? 'APP_HOME'
+            : FC_AUTH_CREW_INVITATION_DESTINATION;
+        $prepared = fc_google_create_login_transaction(
             $pdo,
-            'LOGIN',
-            'GOOGLE',
-            null,
-            $state,
             $browserBinding,
             $destinationKey,
-            $nonce
+            $continuation
         );
-        if ($continuation !== null) {
-            fc_auth_crew_invitation_continuation_bind_login_transaction(
-                $pdo,
-                (string) $continuation['public_id'],
-                (int) $transaction['id']
-            );
-        }
         if ($ownsTransaction) {
             $pdo->commit();
         }
+        if ($ownsTransaction && $continuation === null && $continuationPointer !== null) {
+            fc_auth_crew_invitation_continuation_clear_session($continuationPointer);
+        }
+
+        return $prepared;
     } catch (Throwable $error) {
         if ($ownsTransaction && $pdo->inTransaction()) {
             $pdo->rollBack();
         }
         throw $error;
     }
+}
 
-    return [
-        'transaction_id' => $transaction['public_id'],
-        'state' => $state,
-        'nonce' => $nonce,
-        'client_id' => $clientId,
-    ];
+/**
+ * Replaces an exact expiring/expired unused LOGIN transaction. The old state,
+ * nonce and credential remain unusable; the caller must render a new Google
+ * button and require another explicit click.
+ *
+ * @return array{transaction_id:string,state:string,nonce:string,expires_at:string,client_id:string}
+ */
+function fc_google_refresh_login_transaction(
+    PDO $pdo,
+    string $transactionPublicId,
+    string $rawState,
+    string $rawBrowserBinding,
+    bool $expiredOnly = false
+): array {
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+
+    try {
+        $old = fc_auth_transaction_find_unused_exact(
+            $pdo,
+            $transactionPublicId,
+            'LOGIN',
+            'GOOGLE',
+            $rawState,
+            $rawBrowserBinding,
+            null,
+            true
+        );
+        if ($old === null || empty($old['nonce_hash'])) {
+            throw new DomainException('auth_transaction_refresh_unavailable');
+        }
+
+        $expiresAt = new DateTimeImmutable((string) $old['expires_at'], new DateTimeZone('UTC'));
+        $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+        if ($expiredOnly && $expiresAt > $now) {
+            throw new DomainException('auth_transaction_refresh_unavailable');
+        }
+        if (!$expiredOnly && $expiresAt > $now->modify('+90 seconds')) {
+            throw new DomainException('auth_transaction_refresh_not_due');
+        }
+
+        $continuation = null;
+        if ((string) $old['post_auth_destination_key'] === FC_AUTH_CREW_INVITATION_DESTINATION) {
+            $continuation = fc_auth_crew_invitation_continuation_for_transaction(
+                $pdo,
+                (int) $old['id'],
+                true
+            );
+            if ($continuation === null) {
+                throw new DomainException('invitation_continuation_invalid');
+            }
+            fc_google_validate_continuation_for_refresh($pdo, $continuation);
+        }
+
+        if (!fc_auth_transaction_retire_unused($pdo, (int) $old['id'])) {
+            throw new DomainException('auth_transaction_refresh_unavailable');
+        }
+        if ($continuation !== null) {
+            fc_auth_crew_invitation_continuation_release_login_transaction(
+                $pdo,
+                (int) $continuation['id'],
+                (int) $old['id']
+            );
+            $continuation['continuation_status'] = 'ISSUED';
+            $continuation['auth_transaction_id'] = null;
+        }
+
+        $prepared = fc_google_create_login_transaction(
+            $pdo,
+            $rawBrowserBinding,
+            (string) $old['post_auth_destination_key'],
+            $continuation
+        );
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+
+        return $prepared;
+    } catch (Throwable $error) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $error;
+    }
 }
 
 function fc_google_prelaunch_proof_mode(): bool
@@ -444,6 +613,7 @@ function fc_google_audit_rejection(PDO $pdo, string $reason, ?int $actorUserId =
         'csrf_failed',
         'origin_failed',
         'transaction_failed',
+        'transaction_refreshed',
         'credential_failed',
         'nonce_failed',
         'account_denied',

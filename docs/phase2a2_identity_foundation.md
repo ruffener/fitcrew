@@ -50,7 +50,16 @@ Canonicalization is deliberately conservative:
 4. preserve plus-addressing;
 5. perform no provider-specific rewriting.
 
-Contact email values are not globally unique. One active canonical address per user is enforced, and no user may have more than one active primary contact address.
+An active `VERIFIED` canonical email is globally unique to one FitCrew user.
+Migration `0340_enforce_verified_email_uniqueness.sql` enforces that ownership
+with an explicit nullable claim column, unique index, and check constraint.
+Its temporary-table preflight stops before persistent schema mutation when
+existing users conflict. Unverified delivery/contact evidence may still repeat,
+and no user may have more than one active primary contact address.
+
+Canonical platform roles are `USER`, `PLATFORM_ADMIN`, and
+`PLATFORM_SUPER_ADMIN`. Auth owns this enumeration; Admin owns role-management
+schema and the at-most-one-Super-Admin invariant.
 
 ## Database time contract
 

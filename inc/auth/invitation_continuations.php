@@ -321,6 +321,32 @@ function fc_auth_crew_invitation_continuation_bind_login_transaction(
     }
 }
 
+function fc_auth_crew_invitation_continuation_release_login_transaction(
+    PDO $pdo,
+    int $continuationId,
+    int $authTransactionId
+): void {
+    if (!$pdo->inTransaction()) {
+        throw new LogicException('Releasing an invitation login transaction requires an active transaction.');
+    }
+
+    $statement = $pdo->prepare(
+        'UPDATE auth_invitation_continuations ' .
+        'SET auth_transaction_id = NULL, continuation_status = \'ISSUED\', login_bound_at = NULL ' .
+        'WHERE id = :id AND continuation_status = \'LOGIN_BOUND\' ' .
+        '  AND auth_transaction_id = :transaction_id ' .
+        '  AND authenticated_user_id IS NULL AND authenticated_session_id IS NULL ' .
+        '  AND expires_at > CURRENT_TIMESTAMP(6)'
+    );
+    $statement->execute([
+        ':id' => $continuationId,
+        ':transaction_id' => $authTransactionId,
+    ]);
+    if ($statement->rowCount() !== 1) {
+        throw new DomainException('invitation_continuation_invalid');
+    }
+}
+
 /** @return array<string,mixed>|null */
 function fc_auth_crew_invitation_continuation_for_transaction(
     PDO $pdo,

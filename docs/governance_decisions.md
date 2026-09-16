@@ -31,6 +31,10 @@ This file is a concise current-state summary. Historical decisions that have bee
 | Apple Authentication implementation | Phase 2A5 — NOT YET AUTHORIZED |
 | Authentication identity | Separate from health authorization |
 | Matching email | Never automatic account-linking or merge truth |
+| Canonical verified email | One canonical verified email = one FitCrew user; database enforced |
+| Explicit identity linking | Authenticated user + fresh/recent auth + `LINK_IDENTITY`; no transfer from another user |
+| Stale Google LOGIN transaction | Retire and replace with fresh state/nonce; require a new click; preserve only freshly valid invitation authority |
+| Canonical platform roles | `USER`, `PLATFORM_ADMIN`, `PLATFORM_SUPER_ADMIN` |
 
 ## Health Data
 
