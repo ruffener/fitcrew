@@ -52,10 +52,6 @@ try {
         fc_contract_value('google', FC_AUTH_PROVIDERS, 'provider') === 'GOOGLE',
         'Provider normalization failed.'
     );
-    fc_unit_assert(
-        FC_PLATFORM_ROLES === ['USER', 'PLATFORM_ADMIN', 'PLATFORM_SUPER_ADMIN'],
-        'Canonical platform-role contract is missing PLATFORM_SUPER_ADMIN.'
-    );
 
     fc_unit_assert(fc_provider_email_verified_claim(true) === 1, 'Provider email TRUE claim was not preserved.');
     fc_unit_assert(fc_provider_email_verified_claim(false) === 0, 'Provider email FALSE claim was not preserved.');
@@ -115,7 +111,6 @@ try {
     echo "- security metadata redaction: PASS\n";
     echo "- post-auth destination allowlist: PASS\n";
     echo "- provider contract normalization: PASS\n";
-    echo "- USER / PLATFORM_ADMIN / PLATFORM_SUPER_ADMIN role contract: PASS\n";
     echo "- provider email TRUE/FALSE/UNKNOWN normalization: PASS\n";
     echo "- protected PKCE secret encryption/decryption: PASS\n";
     echo "- governance decision reconciliation: PASS\n";

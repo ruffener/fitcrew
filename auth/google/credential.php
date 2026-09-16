@@ -63,39 +63,8 @@ try {
         null
     );
     if ($transaction === null || empty($transaction['nonce_hash'])) {
-        try {
-            $refreshed = fc_google_refresh_login_transaction(
-                $pdo,
-                $transactionId,
-                $rawState,
-                $browserBinding,
-                true
-            );
-            fc_google_record_rejection_safely('transaction_refreshed');
-            fc_google_json_response(409, [
-                'ok' => false,
-                'refresh_required' => true,
-                'message' => 'Your sign-in page was open for a while, so we refreshed it. Please continue with Google again.',
-                'google' => $refreshed,
-            ]);
-        } catch (DomainException $refreshError) {
-            if (in_array($refreshError->getMessage(), [
-                'invitation_continuation_invalid',
-                'invitation_continuation_product_invalid',
-            ], true)) {
-                fc_auth_crew_invitation_continuation_clear_session();
-                fc_google_record_rejection_safely('invitation_failed');
-                fc_google_json_response(403, [
-                    'ok' => false,
-                    'message' => 'This Crew invitation changed or expired. Open the latest invitation email and try again.',
-                ]);
-            }
-        }
         fc_google_record_rejection_safely('transaction_failed');
-        fc_google_json_response(400, [
-            'ok' => false,
-            'message' => 'Google sign-in could not be completed. Please refresh the page and try again.',
-        ]);
+        fc_google_json_response(400, ['ok' => false, 'message' => 'This sign-in attempt has expired or is no longer valid.']);
     }
 
     $claims = fc_google_verify_id_token($credential, (string) $transaction['nonce_hash']);

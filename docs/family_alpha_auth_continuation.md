@@ -108,13 +108,6 @@ A duplicate logical-invitation claim fails before user creation. Resend generati
 
 Outside this continuation path, the existing Google prelaunch allowlist remains enforced.
 
-If the bound Google LOGIN transaction expires, Auth retires that transaction,
-freshly validates the Website invitation snapshot, releases the continuation,
-and atomically binds it to a new transaction with new state and nonce. The
-participant must click Google again. Auth transaction expiry alone does not
-invalidate the invitation; invalid Website invitation authority cannot be
-refreshed.
-
 ## EMAIL cross-browser handoff
 
 EMAIL magic-link completion uses a short-lived, 256-bit, single-use bearer

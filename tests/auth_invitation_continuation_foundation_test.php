@@ -273,7 +273,7 @@ try {
     )->execute([':crew_id' => $fixtureCrewId, ':user_id' => (int) $owner['id']]);
 
     $invitations = [];
-    foreach (['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'] as $label) {
+    foreach (['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'] as $label) {
         $invitations[$label] = acif_create_invitation(
             $pdo,
             $fixtureCrewId,
@@ -547,121 +547,6 @@ try {
         });
     }
 
-    // An expired Google transaction is retired while its still-current
-    // invitation continuation is rebound to fresh state and nonce.
-    $staleFlow = acif_prepare($pdo, $invitations['I']);
-    $staleId = $pdo->prepare('SELECT id, nonce_hash FROM auth_transactions WHERE public_id = :public_id');
-    $staleId->execute([':public_id' => $staleFlow['prepared']['transaction_id']]);
-    $staleRow = $staleId->fetch(PDO::FETCH_ASSOC);
-    acif_assert(is_array($staleRow), 'Stale Google fixture transaction is missing.');
-    $pdo->prepare(
-        'UPDATE auth_transactions SET expires_at = DATE_ADD(created_at, INTERVAL 1 MICROSECOND) WHERE id = :id'
-    )->execute([':id' => (int) $staleRow['id']]);
-    $refreshed = fc_google_refresh_login_transaction(
-        $pdo,
-        (string) $staleFlow['prepared']['transaction_id'],
-        (string) $staleFlow['prepared']['state'],
-        (string) $staleFlow['browser_binding'],
-        true
-    );
-    acif_assert(
-        !hash_equals((string) $staleFlow['prepared']['transaction_id'], (string) $refreshed['transaction_id'])
-            && !hash_equals((string) $staleFlow['prepared']['state'], (string) $refreshed['state'])
-            && !hash_equals((string) $staleFlow['prepared']['nonce'], (string) $refreshed['nonce']),
-        'Google refresh reused old transaction, state, or nonce.'
-    );
-    $oldRetired = $pdo->prepare('SELECT consumed_at FROM auth_transactions WHERE id = :id');
-    $oldRetired->execute([':id' => (int) $staleRow['id']]);
-    acif_assert($oldRetired->fetchColumn() !== null, 'Expired Google transaction was not retired.');
-    acif_assert(
-        fc_auth_transaction_find_valid(
-            $pdo,
-            (string) $staleFlow['prepared']['transaction_id'],
-            'LOGIN',
-            'GOOGLE',
-            (string) $staleFlow['prepared']['state'],
-            (string) $staleFlow['browser_binding'],
-            null
-        ) === null,
-        'Retired Google transaction remained replayable.'
-    );
-    $refreshedResult = fc_google_complete_verified_login(
-        $pdo,
-        (string) $refreshed['transaction_id'],
-        (string) $refreshed['state'],
-        (string) $staleFlow['browser_binding'],
-        acif_claims('family-alpha-refreshed-google', 'refreshed-provider@example.test'),
-        'family-alpha-refreshed-session'
-    );
-    $fixtureUserIds[] = (int) $refreshedResult['user']['id'];
-    acif_assert(
-        $refreshedResult['destination'] === '/crew-invite.php',
-        'Refreshed Google transaction lost the invitation destination.'
-    );
-
-    // Stale Auth state cannot refresh cancelled Website authority.
-    $cancelledRefreshFlow = acif_prepare($pdo, $invitations['J']);
-    $pdo->prepare(
-        'UPDATE auth_transactions SET expires_at = DATE_ADD(created_at, INTERVAL 1 MICROSECOND) ' .
-        'WHERE public_id = :public_id'
-    )->execute([':public_id' => $cancelledRefreshFlow['prepared']['transaction_id']]);
-    $pdo->prepare(
-        'UPDATE crew_invitations SET invitation_status = \'CANCELLED\', cancelled_at = CURRENT_TIMESTAMP(6) ' .
-        'WHERE public_id = :public_id'
-    )->execute([':public_id' => $invitations['J']['public_id']]);
-    acif_expect_domain(
-        fn () => fc_google_refresh_login_transaction(
-            $pdo,
-            (string) $cancelledRefreshFlow['prepared']['transaction_id'],
-            (string) $cancelledRefreshFlow['prepared']['state'],
-            (string) $cancelledRefreshFlow['browser_binding'],
-            true
-        ),
-        'invitation_continuation_product_invalid',
-        'Cancelled invitation Google refresh'
-    );
-
-    $expiredRefreshFlow = acif_prepare($pdo, $invitations['K']);
-    $pdo->prepare(
-        'UPDATE auth_transactions SET expires_at = DATE_ADD(created_at, INTERVAL 1 MICROSECOND) ' .
-        'WHERE public_id = :public_id'
-    )->execute([':public_id' => $expiredRefreshFlow['prepared']['transaction_id']]);
-    $pdo->prepare(
-        'UPDATE crew_invitations SET expires_at = DATE_SUB(CURRENT_TIMESTAMP(6), INTERVAL 1 SECOND) ' .
-        'WHERE public_id = :public_id'
-    )->execute([':public_id' => $invitations['K']['public_id']]);
-    acif_expect_domain(
-        fn () => fc_google_refresh_login_transaction(
-            $pdo,
-            (string) $expiredRefreshFlow['prepared']['transaction_id'],
-            (string) $expiredRefreshFlow['prepared']['state'],
-            (string) $expiredRefreshFlow['browser_binding'],
-            true
-        ),
-        'invitation_continuation_product_invalid',
-        'Expired invitation Google refresh'
-    );
-
-    $rotatedRefreshFlow = acif_prepare($pdo, $invitations['L']);
-    $pdo->prepare(
-        'UPDATE auth_transactions SET expires_at = DATE_ADD(created_at, INTERVAL 1 MICROSECOND) ' .
-        'WHERE public_id = :public_id'
-    )->execute([':public_id' => $rotatedRefreshFlow['prepared']['transaction_id']]);
-    $pdo->prepare(
-        'UPDATE crew_invitations SET resend_count = resend_count + 1 WHERE public_id = :public_id'
-    )->execute([':public_id' => $invitations['L']['public_id']]);
-    acif_expect_domain(
-        fn () => fc_google_refresh_login_transaction(
-            $pdo,
-            (string) $rotatedRefreshFlow['prepared']['transaction_id'],
-            (string) $rotatedRefreshFlow['prepared']['state'],
-            (string) $rotatedRefreshFlow['browser_binding'],
-            true
-        ),
-        'invitation_continuation_product_invalid',
-        'Rotated invitation Google refresh'
-    );
-
     // Outside invitation entry, the established Google Family Alpha allowlist still applies.
     fc_auth_crew_invitation_continuation_clear_session();
     acif_with_rollback($pdo, function () use ($pdo): void {
@@ -750,8 +635,6 @@ fwrite(STDOUT, "- losing admission creates no user, identity or session: PASS\n"
 fwrite(STDOUT, "- rolled-back admission claim permits legitimate retry: PASS\n");
 fwrite(STDOUT, "- independent invitation authority / existing-user non-consumption: PASS\n");
 fwrite(STDOUT, "- cancelled / expired / rotated invitation rejection: PASS\n");
-fwrite(STDOUT, "- stale Google transaction retired / current invitation rebound with fresh state+nonce: PASS\n");
-fwrite(STDOUT, "- cancelled / expired / rotated invitations cannot refresh Auth authority: PASS\n");
 fwrite(STDOUT, "- minimal Website result / provider-email non-identity: PASS\n");
 fwrite(STDOUT, "- rollback-safe consume / committed issue ordering: PASS\n");
 fwrite(STDOUT, "- ordinary Google allowlist remains enforced: PASS\n");

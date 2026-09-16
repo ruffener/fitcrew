@@ -173,15 +173,6 @@ try {
     fc_test_assert((int) $triStatement->fetchColumn() === 0, 'Provider email verification FALSE must be preserved.');
     $triStatement->execute([':id' => $triUnknown['id']]);
     fc_test_assert($triStatement->fetchColumn() === null, 'Provider email verification UNKNOWN must remain NULL.');
-    fc_test_expect_failure(function () use ($pdo, $user1): void {
-        fc_auth_identity_assert_link_target(
-            $pdo,
-            'GOOGLE',
-            'https://accounts.google.com',
-            'phase2a2-email-verified-unknown',
-            (int) $user1['id']
-        );
-    }, 'An identity owned by another user must not be linked or transferred.');
 
     $canonical = fc_contact_email_canonicalize('  Foo.Bar+tag@Example.COM  ');
     fc_test_assert($canonical === 'foo.bar+tag@example.com', 'Contact email canonicalization must trim/lowercase without dot/plus rewriting.');
@@ -202,30 +193,8 @@ try {
     );
     fc_test_assert(
         $contact1['email_canonical'] === $contact2['email_canonical'],
-        'Unverified delivery addresses should remain non-owning contact evidence.'
+        'Same contact email must be permitted for different users.'
     );
-
-    $verifiedAt = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:s.u');
-    fc_contact_email_create(
-        $pdo,
-        $user1['id'],
-        'Unique.Verified@Example.test',
-        'EMAIL_MAGIC_LINK',
-        false,
-        'VERIFIED',
-        $verifiedAt
-    );
-    fc_test_expect_failure(function () use ($pdo, $user2, $verifiedAt): void {
-        fc_contact_email_create(
-            $pdo,
-            $user2['id'],
-            'unique.verified@example.TEST',
-            'EMAIL_MAGIC_LINK',
-            false,
-            'VERIFIED',
-            $verifiedAt
-        );
-    }, 'Two users must not own the same canonical verified email.');
 
     fc_test_expect_pdo_failure(function () use ($pdo, $user1): void {
         fc_contact_email_create($pdo, $user1['id'], 'second-primary@example.test', 'USER', true);
@@ -415,8 +384,7 @@ try {
     echo "- users / ULID / account constraints: PASS\n";
     echo "- provider identity uniqueness / email non-identity: PASS\n";
     echo "- provider email verification TRUE/FALSE/UNKNOWN: PASS\n";
-    echo "- explicit LINK_IDENTITY ownership boundary / no identity transfer: PASS\n";
-    echo "- canonical verified-email uniqueness / unverified contact / primary rules: PASS\n";
+    echo "- contact email canonicalization / shared-address / primary rules: PASS\n";
     echo "- hashed sessions / individual + all-session revocation: PASS\n";
     echo "- session user/auth-identity ownership integrity: PASS\n";
     echo "- auth transaction binding / expiry / single-use / destination allowlist: PASS\n";

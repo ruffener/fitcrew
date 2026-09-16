@@ -565,11 +565,6 @@ function fc_email_magic_link_ensure_verified_contact(PDO $pdo, int $userId, stri
         throw new LogicException('Verified email contact reconciliation requires an active transaction.');
     }
 
-    $owner = fc_contact_email_find_verified_owner($pdo, $emailSubject, true);
-    if ($owner !== null && (int) $owner['user_id'] !== $userId) {
-        throw new DomainException('account_reconciliation_required');
-    }
-
     $find = $pdo->prepare(
         'SELECT id, verification_status FROM user_contact_emails ' .
         'WHERE user_id = :user_id AND email_canonical = :email AND removed_at IS NULL LIMIT 1 FOR UPDATE'
@@ -580,23 +575,14 @@ function fc_email_magic_link_ensure_verified_contact(PDO $pdo, int $userId, stri
     if ($existing !== false) {
         $update = $pdo->prepare(
             'UPDATE user_contact_emails ' .
-            'SET verification_status = \'VERIFIED\', verified_at = :verified_at, ' .
-            '    verified_email_canonical = :email, source_key = \'EMAIL_MAGIC_LINK\' ' .
+            'SET verification_status = \'VERIFIED\', verified_at = :verified_at, source_key = \'EMAIL_MAGIC_LINK\' ' .
             'WHERE id = :id AND user_id = :user_id'
         );
-        try {
-            $update->execute([
-                ':verified_at' => $now,
-                ':email' => $emailSubject,
-                ':id' => (int) $existing['id'],
-                ':user_id' => $userId,
-            ]);
-        } catch (PDOException $error) {
-            if ((string) $error->getCode() === '23000' && (int) ($error->errorInfo[1] ?? 0) === 1062) {
-                throw new DomainException('canonical_verified_email_conflict', 0, $error);
-            }
-            throw $error;
-        }
+        $update->execute([
+            ':verified_at' => $now,
+            ':id' => (int) $existing['id'],
+            ':user_id' => $userId,
+        ]);
         return;
     }
 
@@ -658,12 +644,8 @@ function fc_email_magic_link_complete(
             true
         );
         $newAccount = false;
-        $verifiedOwner = fc_contact_email_find_verified_owner($pdo, $emailSubject, true);
 
         if ($identity !== null) {
-            if ($verifiedOwner !== null && (int) $verifiedOwner['user_id'] !== (int) $identity['user_id']) {
-                throw new DomainException('account_reconciliation_required');
-            }
             if ((string) $identity['identity_status'] !== 'ACTIVE' || (string) $identity['account_status'] !== 'ACTIVE') {
                 throw new DomainException('fitcrew_account_access_denied');
             }
@@ -683,9 +665,6 @@ function fc_email_magic_link_complete(
                 }
             }
         } else {
-            if ($verifiedOwner !== null || fc_auth_identity_email_evidence_owners($pdo, $emailSubject) !== []) {
-                throw new DomainException('account_reconciliation_required');
-            }
             if ($invitationContinuation === null) {
                 throw new DomainException('prelaunch_new_account_denied');
             }
@@ -850,7 +829,6 @@ function fc_email_magic_link_audit_rejection(PDO $pdo, string $reason): void
         'account_denied',
         'prelaunch_denied',
         'invitation_failed',
-        'account_reconciliation_required',
         'unexpected_failure',
     ];
     if (!in_array($reason, $allowed, true)) {

@@ -170,23 +170,6 @@ try {
         fc_auth_transaction_find_valid($pdo, $txExpired, 'LOGIN', 'GOOGLE', $stateExpired, $browserExpired, null) === null,
         'expired transaction was accepted'
     );
-    $_ENV['GOOGLE_AUTH_CLIENT_ID'] = 'fitcrew-google-refresh-proof.apps.googleusercontent.com';
-    $refreshedExpired = fc_google_refresh_login_transaction(
-        $pdo,
-        $txExpired,
-        $stateExpired,
-        $browserExpired,
-        true
-    );
-    fc_google_test_assert(
-        $refreshedExpired['transaction_id'] !== $txExpired
-            && $refreshedExpired['state'] !== $stateExpired
-            && $refreshedExpired['nonce'] !== 'phase2a3-nonce-expired',
-        'expired ordinary Google transaction did not receive fresh transaction/state/nonce'
-    );
-    $retiredExpired = $pdo->prepare('SELECT consumed_at FROM auth_transactions WHERE public_id = :public_id');
-    $retiredExpired->execute([':public_id' => $txExpired]);
-    fc_google_test_assert($retiredExpired->fetchColumn() !== null, 'expired ordinary transaction was not retired');
 
     $_SESSION['fitcrew_csrf_token'] = 'phase2a3-csrf-good';
     fc_google_test_assert(!fc_validate_csrf('phase2a3-csrf-bad'), 'CSRF failure was accepted');
@@ -206,7 +189,6 @@ try {
     echo "- wrong browser binding rejected: PASS\n";
     echo "- consumed transaction reuse rejected: PASS\n";
     echo "- expired transaction rejected: PASS\n";
-    echo "- expired ordinary transaction retired / fresh state+nonce issued: PASS\n";
     echo "- CSRF failure rejected: PASS\n";
 } catch (Throwable $e) {
     if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) {

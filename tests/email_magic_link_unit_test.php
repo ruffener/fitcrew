@@ -24,7 +24,6 @@ try {
         return str_replace(["\r\n", "\r"], "\n", $contents);
     };
     $migration = $readSource($root . '/database/migrations/0330_add_email_magic_link_authentication.sql');
-    $uniquenessMigration = $readSource($root . '/database/migrations/0340_enforce_verified_email_uniqueness.sql');
     $service = $readSource($root . '/inc/auth/email_magic_link.php');
     $continuations = $readSource($root . '/inc/auth/invitation_continuations.php');
     $request = $readSource($root . '/auth/email/request.php');
@@ -181,17 +180,9 @@ try {
         'Unknown EMAIL identities are not held behind invitation admission.'
     );
     emlu_assert(
-        str_contains($service, 'fc_contact_email_find_verified_owner(')
-            && str_contains($service, 'fc_auth_identity_email_evidence_owners(')
-            && str_contains($service, "throw new DomainException('account_reconciliation_required')"),
-        'Canonical EMAIL resolution does not detect cross-user reconciliation conflicts.'
-    );
-    emlu_assert(
-        str_contains($uniquenessMigration, 'CREATE TEMPORARY TABLE fc_verified_email_uniqueness_preflight')
-            && str_contains($uniquenessMigration, 'UNIQUE KEY uq_contact_email_verified_canonical')
-            && str_contains($uniquenessMigration, 'verified_email_canonical = email_canonical')
-            && !str_contains($uniquenessMigration, 'GENERATED ALWAYS'),
-        'Migration 0340 lacks duplicate-safe MariaDB verified-email uniqueness.'
+        str_contains($service, 'WHERE user_id = :user_id AND email_canonical = :email')
+            && !preg_match('/FROM user_contact_emails[^;]*JOIN users/si', $service),
+        'Contact email could influence cross-user identity selection.'
     );
     emlu_assert(
         str_contains($contracts, "'CREW_INVITATION_ACCEPTANCE' => '/crew-invite.php'")
@@ -201,7 +192,7 @@ try {
     emlu_assert(
         str_contains($service, 'fc_email_magic_link_release_bound_transaction(')
             && str_contains($service, 'pkce_verifier_secret_envelope = NULL')
-            && str_contains($loginController, 'fc_google_prepare_login_transaction'),
+            && str_contains($loginController, '$invitationProviderAlreadyBound'),
         'Provider selection does not preserve one exact active invitation-bound transaction.'
     );
     emlu_assert(
@@ -212,7 +203,6 @@ try {
 
     fwrite(STDOUT, "EMAIL_MAGIC_LINK_V1 unit proof: PASS\n");
     fwrite(STDOUT, "- EMAIL provider / issuer / schema contract: PASS\n");
-    fwrite(STDOUT, "- canonical verified-email database uniqueness / duplicate preflight: PASS\n");
     fwrite(STDOUT, "- 256-bit token / hash-only / 15-minute lifecycle: PASS\n");
     fwrite(STDOUT, "- request POST / CSRF / same-origin / generic response: PASS\n");
     fwrite(STDOUT, "- email + network + invalid-completion rate limits: PASS\n");
@@ -222,7 +212,6 @@ try {
     fwrite(STDOUT, "- no third-party token-page resources: PASS\n");
     fwrite(STDOUT, "- existing fc_mail_send transport / canonical subject: PASS\n");
     fwrite(STDOUT, "- EMAIL identity isolation / explicit-linking boundary: PASS\n");
-    fwrite(STDOUT, "- canonical verified-email conflict detection / no automatic merge: PASS\n");
     fwrite(STDOUT, "- invitation admission before account creation: PASS\n");
     fwrite(STDOUT, "- exact invitation binding / explicit provider replacement: PASS\n");
     fwrite(STDOUT, "- fixed destination / no membership or invited-email semantics: PASS\n");

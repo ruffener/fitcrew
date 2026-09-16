@@ -37,20 +37,6 @@ login page
 → authenticated /app.php
 ```
 
-## Stale transaction refresh
-
-A visible Google button is backed by a short-lived FitCrew LOGIN transaction.
-The browser proactively asks Auth to replace a transaction shortly before
-expiry. If an expired exact transaction reaches the credential endpoint, the
-server rejects the old credential, retires the old transaction, and returns
-fresh state and nonce. The official button is rendered again and the participant
-must click it again; old state, nonce, and credential are never reused.
-
-For Crew invitations, Auth first revalidates the Website-owned invitation
-snapshot. A still-current continuation is released from the old transaction and
-atomically rebound to the new one. Cancelled, expired, accepted, or rotated
-Website authority cannot be refreshed.
-
 ## Prelaunch account-creation gate
 
 `PRELAUNCH_AUTH_PROOF_MODE=true` gates only **new** Google identities. A new account is permitted only when a validated, provider-verified email claim matches `PRELAUNCH_AUTH_ALLOWED_EMAILS` from environment configuration.

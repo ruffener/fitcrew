@@ -42,7 +42,17 @@ $emailAuthConfig = [
     'csrf_token' => fc_csrf_token(),
     'request_endpoint' => '/auth/email/request.php',
 ];
-if (fc_google_auth_enabled()) {
+$invitationLoginContext = null;
+try {
+    $invitationLoginContext = fc_auth_crew_invitation_continuation_login_context(fc_db());
+} catch (Throwable) {
+    fc_auth_crew_invitation_continuation_clear_session();
+}
+$invitationProviderAlreadyBound =
+    is_array($invitationLoginContext)
+    && (string) ($invitationLoginContext['continuation_status'] ?? '') === 'LOGIN_BOUND';
+
+if (fc_google_auth_enabled() && !$invitationProviderAlreadyBound) {
     try {
         $prepared = fc_google_prepare_login_transaction(fc_db());
         $googleAuthConfig = [
@@ -51,10 +61,8 @@ if (fc_google_auth_enabled()) {
             'transaction_id' => $prepared['transaction_id'],
             'state' => $prepared['state'],
             'nonce' => $prepared['nonce'],
-            'expires_at' => $prepared['expires_at'],
             'csrf_token' => fc_csrf_token(),
             'endpoint' => '/auth/google/credential.php',
-            'refresh_endpoint' => '/auth/google/refresh.php',
         ];
     } catch (Throwable $e) {
         fc_log('warning', 'Unable to prepare Google authentication transaction.', [
@@ -62,6 +70,8 @@ if (fc_google_auth_enabled()) {
         ]);
         $googleAuthConfig['reason'] = 'Google authentication is temporarily unavailable.';
     }
+} elseif ($invitationProviderAlreadyBound) {
+    $googleAuthConfig['reason'] = 'A sign-in choice is already in progress in this browser.';
 }
 
 

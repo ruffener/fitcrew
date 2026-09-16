@@ -122,25 +122,6 @@ try {
     fc_test_assert(strpos($googleJs, "text: 'continue_with'") !== false, 'official Google button is not configured for Continue with Google');
     fc_test_assert(strpos($googleJs, 'google.accounts.id.prompt') === false, 'Google One Tap/prompt was enabled');
     fc_test_assert(strpos($googleJs, 'google.accounts.oauth2') === false, 'Google authorization/access-token API was introduced');
-    fc_test_assert(
-        str_contains($googleJs, 'refreshTransaction')
-            && str_contains($googleJs, 'refresh_required')
-            && str_contains($googleJs, 'Please continue with Google again.'),
-        'Stale Google controls are not replaced with a fresh explicit-click transaction.'
-    );
-    $googleCredential = file_get_contents(fc_path('auth/google/credential.php')) ?: '';
-    fc_test_assert(
-        !str_contains($googleCredential, 'This sign-in attempt has expired or is no longer valid.')
-            && str_contains($googleCredential, 'fc_google_refresh_login_transaction('),
-        'Expired Google transaction handling retains misleading copy or lacks server refresh.'
-    );
-    $googleRefresh = file_get_contents(fc_path('auth/google/refresh.php')) ?: '';
-    fc_test_assert(
-        str_contains($googleRefresh, 'fc_google_request_origin_valid')
-            && str_contains($googleRefresh, 'fc_validate_csrf')
-            && str_contains($googleRefresh, 'fc_google_refresh_login_transaction('),
-        'Google refresh endpoint lacks same-origin, CSRF, or server-authority enforcement.'
-    );
 
     $migrationSource = '';
     foreach (glob(fc_path('database/migrations/*.sql')) ?: [] as $migrationFile) {
@@ -191,7 +172,6 @@ try {
     echo "- account-entry provider order: PASS\n";
     echo "- Google authentication / Google Health separation: PASS\n";
     echo "- explicit FedCM Google button / no One Tap or authorization API: PASS\n";
-    echo "- server-authoritative stale transaction refresh / fresh click: PASS\n";
     echo "- Google ID/access/refresh token persistence absent from schema: PASS\n";
     echo "- production session timeout explicit-config contract: PASS\n";
 } catch (Throwable $e) {

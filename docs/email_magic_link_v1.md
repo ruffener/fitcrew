@@ -83,18 +83,10 @@ membership creation. Auth never creates membership.
 
 ## Verified contact behavior
 
-Successful EMAIL proof may create or update a `VERIFIED` canonical email claim
-on the already resolved or newly created user. One canonical verified email may
-belong to only one FitCrew user. An existing EMAIL identity remains issuer +
-mailbox; a verified claim owned by another user or matching federated-provider
-email evidence produces `ACCOUNT RECONCILIATION REQUIRED`. It never
-auto-selects, links, merges, or transfers a user or identity. A future explicit
-link requires an authenticated user plus a `LINK_IDENTITY` transaction.
-
-Migration `0340_enforce_verified_email_uniqueness.sql` performs a duplicate
-preflight and then enforces the verified canonical claim with a MariaDB-safe
-explicit column, unique index, and check constraint. No generated-column
-partial-uniqueness pattern is introduced.
+Successful EMAIL proof may create or update the same canonical mailbox as a
+`VERIFIED` contact email on the already resolved or newly created user. The
+query is scoped by that user's numeric ID. Contact-email lookup never selects a
+FitCrew user.
 
 ## Operational notes
 

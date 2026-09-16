@@ -186,12 +186,6 @@ try {
         $check->execute([':table_name' => $table]);
         emlf_assert((int) $check->fetchColumn() === 1, 'Apply migration 0330 first: missing ' . $table . '.');
     }
-    $verifiedColumn = $pdo->query(
-        "SELECT COUNT(*) FROM information_schema.columns " .
-        "WHERE table_schema=DATABASE() AND table_name='user_contact_emails' " .
-        "AND column_name='verified_email_canonical'"
-    );
-    emlf_assert((int) $verifiedColumn->fetchColumn() === 1, 'Apply migration 0340 before running this proof.');
     emlf_assert(session_id() !== '', 'CLI browser-binding session is unavailable.');
 
     $pdo->beginTransaction();
@@ -217,25 +211,6 @@ try {
         'provider_email_verified' => 1,
         'email_verification_observed_at' => new DateTimeImmutable('now', new DateTimeZone('UTC')),
     ]);
-    fc_auth_identity_create($pdo, (int) $googleOwner['id'], [
-        'provider_key' => 'MICROSOFT',
-        'issuer' => 'https://login.microsoftonline.com/email-magic-test/v2.0',
-        'provider_tenant_id' => 'email-magic-test-tenant',
-        'provider_object_id' => 'email-magic-test-object',
-        'email_at_provider' => 'email-magic-unknown-evidence@example.test',
-        'provider_email_verified' => null,
-    ]);
-    $contactOwner = fc_user_create($pdo, 'Canonical Email Owner');
-    $fixtureUserIds[] = (int) $contactOwner['id'];
-    fc_contact_email_create(
-        $pdo,
-        (int) $contactOwner['id'],
-        'Email-Magic-Contact-Owned@Example.test',
-        'EMAIL_MAGIC_LINK',
-        true,
-        'VERIFIED',
-        (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:s.u')
-    );
     $crewPublicId = fc_new_public_id();
     $crew = $pdo->prepare('INSERT INTO crews (public_id,display_name,owner_user_id) VALUES (:public_id,:name,:owner_id)');
     $crew->execute([':public_id' => $crewPublicId, ':name' => 'Email Magic Link Crew', ':owner_id' => (int) $owner['id']]);
@@ -249,8 +224,6 @@ try {
         'B' => emlf_invitation($pdo, $fixtureCrewId, (int) $owner['id'], 'rollback-invite@example.test'),
         'C' => emlf_invitation($pdo, $fixtureCrewId, (int) $owner['id'], 'federated-match-invite@example.test'),
         'D' => emlf_invitation($pdo, $fixtureCrewId, (int) $owner['id'], 'provider-switch-invite@example.test'),
-        'E' => emlf_invitation($pdo, $fixtureCrewId, (int) $owner['id'], 'unknown-evidence-invite@example.test'),
-        'F' => emlf_invitation($pdo, $fixtureCrewId, (int) $owner['id'], 'owned-contact-invite@example.test'),
     ];
     foreach ($invitations as $invitation) {
         $fixtureInvitationIds[] = (string) $invitation['public_id'];
@@ -419,16 +392,15 @@ try {
     emlf_use_browser('expiry-arrival');
     emlf_assert(!fc_email_magic_link_inspect($pdo, (string) $expired['token']), 'Expired token remained valid.');
 
-    // A matching Google provider-email claim cannot select/link its user and
-    // is surfaced as a reconciliation requirement even outside invitation entry.
+    // A matching Google provider-email claim cannot select/link its user.
     $beforeUnknownUsers = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
     emlf_use_browser('unknown-request');
     $unknown = emlf_issue($pdo, 'email-magic-match@example.test');
     $unknownArrival = emlf_use_browser('unknown-arrival');
     emlf_expect_domain(
         fn () => fc_email_magic_link_complete($pdo, (string) $unknown['token'], $unknownArrival, 'email-magic-unknown-session'),
-        'account_reconciliation_required',
-        'Provider-email reconciliation outside invitation'
+        'prelaunch_new_account_denied',
+        'Unknown EMAIL identity outside invitation'
     );
     emlf_assert((int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === $beforeUnknownUsers, 'Denied EMAIL login created a user.');
     $emailIdentityCount = $pdo->prepare(
@@ -436,20 +408,6 @@ try {
     );
     $emailIdentityCount->execute([':subject' => 'email-magic-match@example.test']);
     emlf_assert((int) $emailIdentityCount->fetchColumn() === 0, 'Google provider email auto-linked an EMAIL identity.');
-
-    emlf_use_browser('unknown-no-evidence-request');
-    $unknownNoEvidence = emlf_issue($pdo, 'email-magic-no-evidence@example.test');
-    $unknownNoEvidenceArrival = emlf_use_browser('unknown-no-evidence-arrival');
-    emlf_expect_domain(
-        fn () => fc_email_magic_link_complete(
-            $pdo,
-            (string) $unknownNoEvidence['token'],
-            $unknownNoEvidenceArrival,
-            'email-magic-no-evidence-session'
-        ),
-        'prelaunch_new_account_denied',
-        'Unknown EMAIL identity outside invitation'
-    );
 
     // One valid invitation admits one EMAIL user without comparing invitation email.
     emlf_use_browser('admission-request');
@@ -557,65 +515,21 @@ try {
     $fixtureUserIds[] = (int) $retry['user']['id'];
     emlf_assert($retry['new_account'] === true, 'Legitimate retry after rollback failed.');
 
-    // Provider-email equality is reconciliation evidence, never an automatic
-    // link, merge, or authority to create a second canonical email owner.
+    // A federated email match inside a valid invitation still creates a distinct EMAIL user.
     fc_auth_crew_invitation_continuation_clear_session();
     emlf_use_browser('federated-request');
     emlf_begin_invitation($pdo, $invitations['C']);
     $federatedMatch = emlf_issue($pdo, 'email-magic-match@example.test');
     $federatedArrival = emlf_use_browser('federated-arrival');
-    $usersBeforeReconciliation = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
-    emlf_expect_domain(
-        fn () => fc_email_magic_link_complete(
-            $pdo,
-            (string) $federatedMatch['token'],
-            $federatedArrival,
-            'email-magic-federated-match-session'
-        ),
-        'account_reconciliation_required',
-        'Provider-email reconciliation conflict'
+    $matchResult = fc_email_magic_link_complete(
+        $pdo,
+        (string) $federatedMatch['token'],
+        $federatedArrival,
+        'email-magic-federated-match-session'
     );
-    emlf_assert(
-        (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === $usersBeforeReconciliation,
-        'Provider-email reconciliation conflict created or merged a user.'
-    );
-
-    fc_auth_crew_invitation_continuation_clear_session();
-    emlf_use_browser('unknown-evidence-request');
-    emlf_begin_invitation($pdo, $invitations['E']);
-    $unknownEvidence = emlf_issue($pdo, 'email-magic-unknown-evidence@example.test');
-    $unknownEvidenceArrival = emlf_use_browser('unknown-evidence-arrival');
-    emlf_expect_domain(
-        fn () => fc_email_magic_link_complete(
-            $pdo,
-            (string) $unknownEvidence['token'],
-            $unknownEvidenceArrival,
-            'email-magic-unknown-evidence-session'
-        ),
-        'account_reconciliation_required',
-        'Verification-UNKNOWN provider evidence conflict'
-    );
-
-    fc_auth_crew_invitation_continuation_clear_session();
-    emlf_use_browser('owned-contact-request');
-    emlf_begin_invitation($pdo, $invitations['F']);
-    $ownedContact = emlf_issue($pdo, 'email-magic-contact-owned@example.TEST');
-    $ownedContactArrival = emlf_use_browser('owned-contact-arrival');
-    $usersBeforeOwnedContact = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
-    emlf_expect_domain(
-        fn () => fc_email_magic_link_complete(
-            $pdo,
-            (string) $ownedContact['token'],
-            $ownedContactArrival,
-            'email-magic-owned-contact-session'
-        ),
-        'account_reconciliation_required',
-        'Canonical verified-email owner without EMAIL identity'
-    );
-    emlf_assert(
-        (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === $usersBeforeOwnedContact,
-        'Existing canonical verified-email claim allowed a second user.'
-    );
+    fc_email_magic_link_apply_committed_arrival_context($matchResult);
+    $fixtureUserIds[] = (int) $matchResult['user']['id'];
+    emlf_assert((int) $matchResult['user']['id'] !== (int) $googleOwner['id'], 'Matching Google email merged users.');
 
     // Exact server-side rate limits execute without retaining raw subjects.
     $pdo->beginTransaction();
@@ -662,15 +576,12 @@ try {
     fwrite(STDOUT, "- request browser A → arrival browser B succeeds: PASS\n");
     fwrite(STDOUT, "- desktop → mobile-equivalent returning login: PASS\n");
     fwrite(STDOUT, "- invitation continuation transferred / original browser rejected: PASS\n");
-    fwrite(STDOUT, "- provider-email reconciliation outside invitation creates nothing: PASS\n");
-    fwrite(STDOUT, "- unknown EMAIL identity outside invitation remains prelaunch-denied: PASS\n");
+    fwrite(STDOUT, "- unknown EMAIL identity outside invitation creates nothing: PASS\n");
     fwrite(STDOUT, "- invitation-bound new EMAIL user / fixed return: PASS\n");
     fwrite(STDOUT, "- invited email is not compared with EMAIL subject: PASS\n");
     fwrite(STDOUT, "- one logical invitation across EMAIL/Google: PASS\n");
     fwrite(STDOUT, "- rollback preserves admission and token retry: PASS\n");
-    fwrite(STDOUT, "- provider-email evidence triggers reconciliation without link/merge: PASS\n");
-    fwrite(STDOUT, "- verification-UNKNOWN provider email cannot transfer ownership: PASS\n");
-    fwrite(STDOUT, "- existing canonical verified-email owner prevents second user: PASS\n");
+    fwrite(STDOUT, "- matching federated provider email does not link/merge: PASS\n");
     fwrite(STDOUT, "- executable per-email and completion-network limits: PASS\n");
     fwrite(STDOUT, "- rate-limit buckets retain keyed evidence only: PASS\n");
     fwrite(STDOUT, "- Crew membership untouched by Auth: PASS\n");

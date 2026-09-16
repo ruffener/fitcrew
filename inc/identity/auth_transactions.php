@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** @return array{id:int,public_id:string,expires_at:string} */
+/** @return array{id:int,public_id:string} */
 function fc_auth_transaction_create(
     PDO $pdo,
     string $intent,
@@ -56,78 +56,7 @@ function fc_auth_transaction_create(
         ':expires_at' => $expiresAt->format('Y-m-d H:i:s.u'),
     ]);
 
-    return [
-        'id' => (int) $pdo->lastInsertId(),
-        'public_id' => $publicId,
-        'expires_at' => $expiresAt->format('Y-m-d H:i:s.u'),
-    ];
-}
-
-/** @return array<string,mixed>|null */
-function fc_auth_transaction_find_unused_exact(
-    PDO $pdo,
-    string $publicId,
-    string $intent,
-    string $provider,
-    string $rawState,
-    string $rawBrowserSessionBinding,
-    ?int $expectedUserId,
-    bool $forUpdate = false
-): ?array {
-    $intent = fc_contract_value($intent, FC_AUTH_TRANSACTION_INTENTS, 'auth transaction intent');
-    $provider = fc_contract_value($provider, FC_AUTH_PROVIDERS, 'auth provider');
-    if ($forUpdate && !$pdo->inTransaction()) {
-        throw new LogicException('Locking an Auth transaction requires an active transaction.');
-    }
-
-    $sql =
-        'SELECT id, public_id, intent, expected_provider, expected_user_id, state_hash, nonce_hash, ' .
-        ' browser_session_binding_hash, post_auth_destination_key, created_at, expires_at, consumed_at ' .
-        'FROM auth_transactions ' .
-        'WHERE public_id = :public_id ' .
-        '  AND intent = :intent ' .
-        '  AND expected_provider = :provider ' .
-        '  AND state_hash = :state_hash ' .
-        '  AND browser_session_binding_hash = :browser_hash ' .
-        '  AND consumed_at IS NULL ';
-    $parameters = [
-        ':public_id' => $publicId,
-        ':intent' => $intent,
-        ':provider' => $provider,
-        ':state_hash' => fc_secret_evidence_hash($rawState),
-        ':browser_hash' => fc_secret_evidence_hash($rawBrowserSessionBinding),
-    ];
-    if ($expectedUserId === null) {
-        $sql .= ' AND expected_user_id IS NULL ';
-    } else {
-        $sql .= ' AND expected_user_id = :expected_user_id ';
-        $parameters[':expected_user_id'] = $expectedUserId;
-    }
-    $sql .= 'LIMIT 1';
-    if ($forUpdate) {
-        $sql .= ' FOR UPDATE';
-    }
-
-    $statement = $pdo->prepare($sql);
-    $statement->execute($parameters);
-    $row = $statement->fetch(PDO::FETCH_ASSOC);
-
-    return $row === false ? null : $row;
-}
-
-function fc_auth_transaction_retire_unused(PDO $pdo, int $transactionId): bool
-{
-    if (!$pdo->inTransaction()) {
-        throw new LogicException('Retiring an Auth transaction requires an active transaction.');
-    }
-    $statement = $pdo->prepare(
-        'UPDATE auth_transactions ' .
-        'SET consumed_at = CURRENT_TIMESTAMP(6), pkce_verifier_secret_envelope = NULL ' .
-        'WHERE id = :id AND consumed_at IS NULL'
-    );
-    $statement->execute([':id' => $transactionId]);
-
-    return $statement->rowCount() === 1;
+    return ['id' => (int) $pdo->lastInsertId(), 'public_id' => $publicId];
 }
 
 function fc_auth_transaction_clear_expired_pkce_secrets(PDO $pdo): int
