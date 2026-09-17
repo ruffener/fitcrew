@@ -20,7 +20,7 @@ authenticated `expected_user_id`; matching email strings never authorize it.
 | Endpoint | Method | Contract |
 |---|---|---|
 | `/auth/email/request.php` | POST | Same-origin and CSRF protected; applies email/network rate limits, issues a hash-only challenge, sends with `fc_mail_send()`, and always returns the same public response. |
-| `/auth/email/confirm.php#token=...` | GET | Renders confirmation only. The fragment is not sent in the HTTP request. Returns `no-store`, `no-referrer`, and a nonce-restricted no-third-party CSP. |
+| `/auth/email/confirm.php#token=...` | GET | Renders confirmation only. The fragment is not sent in the HTTP request. Returns `no-store`, `Referrer-Policy: same-origin`, and a nonce-restricted no-third-party CSP with `form-action 'self'`. |
 | `/auth/email/complete.php` | POST | CSRF protected; validates any supplied `Origin` against the canonical FitCrew origin while tolerating legitimate header omission; applies the completion-attempt limit, atomically validates/consumes the link, resolves identity, creates the FitCrew session, and completes Auth continuation state. |
 
 The confirmation page is standalone and loads no external scripts, images,
@@ -29,6 +29,16 @@ URL fragment, immediately removes the fragment from the address bar, and places
 the token in the explicit POST form. URL fragments are not sent to the web
 server, keeping the raw token out of ordinary HTTP access logs. Automated
 email-link GET scanners still cannot authenticate.
+
+The confirmation page uses `Referrer-Policy: same-origin` deliberately. Under
+the [Fetch Origin-header algorithm](https://fetch.spec.whatwg.org/#append-a-request-origin-header),
+`no-referrer` makes a native form POST send the literal `Origin: null` even
+when the destination is same-origin. Completion correctly rejects that opaque
+origin. `same-origin` preserves the canonical Origin on the direct completion
+POST while withholding referrer information from other origins. The token
+remains excluded from request URLs and referrers. The completion endpoint's
+own `no-referrer` response policy remains unchanged; it does not set the policy
+of the preceding confirmation page.
 
 ## Challenge persistence
 
@@ -103,8 +113,9 @@ partial-uniqueness pattern is introduced.
 - Delivery uses the existing configured mail driver and Postmark adapter.
 - A valid EMAIL bearer link may be completed in another browser or device. The
   confirmation POST remains session-bound and CSRF protected in the arrival
-  browser. A supplied `Origin` must be canonical; a missing `Origin` is allowed
-  because legitimate browser or hosting paths may omit that header.
+  browser. A supplied `Origin` must be canonical; the existing missing-header
+  compatibility rule remains unchanged. Literal `Origin: null` and foreign
+  origins remain rejected; neither is equivalent to a missing header.
 - Invitation continuation transfer is committed atomically with EMAIL token,
   LOGIN transaction, identity, and FitCrew-session state. Its former browser
   binding is rejected after transfer.
@@ -112,3 +123,33 @@ partial-uniqueness pattern is introduced.
 - Invalid public completion responses disclose no account-existence detail.
 - Raw token, raw network evidence, and mail-delivery secrets are excluded from
   audit metadata and application logs.
+
+## Confirmation-policy production browser proof
+
+Run only after the correction's exact main commit is successfully deployed.
+Use an existing EMAIL identity or an authorized invitation flow; a matching
+Google mailbox alone is not authorization to link identities or create users.
+
+1. Request one fresh link, open only that newest email, and stop on the
+   confirmation page. Do not reuse a tab loaded before deployment.
+2. In browser Developer Tools, enable Network / Preserve log before opening
+   the link (or reopen that same unconsumed email link after enabling it).
+   The confirmation GET must return `Referrer-Policy: same-origin` and
+   `Cache-Control: no-store, private`, with the existing restricted CSP.
+3. Merely opening the page must not authenticate or consume the link.
+4. Click Continue once, within the 15-minute lifetime. The completion POST's
+   request header must be `Origin: https://fitcrewchallenge.com`, not `null`.
+   Its Referer, if sent, must not contain the token; do not copy or share the
+   request body, token, cookies, or CSRF value.
+5. Verify the expected signed-in account/destination, and confirm both the
+   exact challenge and its LOGIN transaction have consumption timestamps.
+   An invitation flow must still require separate explicit Crew acceptance.
+6. Reopen the same consumed email link and click Continue once: it must be
+   rejected without creating another authentication session. Repeat the valid
+   flow with a separately requested fresh link in another browser to prove
+   arrival-session CSRF and cross-browser completion still work.
+
+Unit checks guard the header/form contract and existing origin/CSRF rejection.
+They do not replace this real browser proof. If the origin is now canonical but
+completion still fails, inspect the newest rejection reason; do not weaken the
+origin or CSRF checks, and do not attribute every generic rejection to expiry.

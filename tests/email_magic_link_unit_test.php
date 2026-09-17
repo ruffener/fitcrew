@@ -121,10 +121,12 @@ try {
         'Token GET is not inspection-only.'
     );
     emlu_assert(
-        str_contains($confirm, "header('Referrer-Policy: no-referrer')")
+        str_contains($confirm, "header('Referrer-Policy: same-origin')")
+            && !str_contains($confirm, "header('Referrer-Policy: no-referrer')")
             && str_contains($confirm, "header('Cache-Control: no-store, private')")
-            && str_contains($confirm, "default-src 'none'"),
-        'Token-bearing confirmation lacks privacy headers or third-party isolation.'
+            && str_contains($confirm, "default-src 'none'")
+            && str_contains($confirm, "form-action 'self'"),
+        'Confirmation must preserve same-origin POST Origin while retaining privacy and form isolation.'
     );
     emlu_assert(
         str_contains($complete, 'if (!fc_is_post())')
@@ -132,6 +134,23 @@ try {
             && str_contains($complete, 'fc_validate_csrf')
             && str_contains($complete, 'fc_email_magic_link_complete('),
         'Explicit protected completion POST or bounded Origin policy is missing.'
+    );
+    $completionOriginAt = strpos($complete, 'if (!fc_email_magic_link_completion_origin_valid(');
+    $completionCsrfAt = strpos($complete, 'if (!fc_validate_csrf(');
+    $completionServiceAt = strpos($complete, '$result = fc_email_magic_link_complete(');
+    emlu_assert(
+        $completionOriginAt !== false
+            && $completionCsrfAt !== false
+            && $completionServiceAt !== false
+            && $completionOriginAt < $completionServiceAt
+            && $completionCsrfAt < $completionServiceAt,
+        'Origin and arrival-session CSRF checks must precede token consumption.'
+    );
+    emlu_assert(
+        str_contains($view, '<form method="post" action="/auth/email/complete.php">')
+            && str_contains($view, 'name="csrf_token"')
+            && !preg_match('/<meta\\b[^>]*\\bname\\s*=\\s*["\']referrer["\']/i', $view),
+        'Confirmation must POST directly to the same origin without overriding its referrer policy.'
     );
     emlu_assert(
         str_contains($view, 'Opening this page did not sign you in')
@@ -239,6 +258,7 @@ try {
     fwrite(STDOUT, "- request POST / CSRF / same-origin / generic response: PASS\n");
     fwrite(STDOUT, "- email + network + invalid-completion rate limits: PASS\n");
     fwrite(STDOUT, "- scanner-safe GET / explicit protected completion POST: PASS\n");
+    fwrite(STDOUT, "- same-origin confirmation policy / opaque-origin rejection / pre-consumption CSRF: PASS\n");
     fwrite(STDOUT, "- cross-browser bearer completion / arrival-session transfer: PASS\n");
     fwrite(STDOUT, "- fragment token excluded from GET/access logs: PASS\n");
     fwrite(STDOUT, "- no third-party token-page resources: PASS\n");

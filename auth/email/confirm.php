@@ -7,7 +7,10 @@ require_once fc_path('inc/auth/email_magic_link.php');
 
 header('Cache-Control: no-store, private');
 header('Pragma: no-cache');
-header('Referrer-Policy: no-referrer');
+// Native form POSTs under no-referrer send Origin: null. Keep the origin for
+// our same-origin completion POST without sending referrers to other sites.
+// The bearer token stays in the fragment/form body, never in the referrer.
+header('Referrer-Policy: same-origin');
 $scriptNonce = rtrim(strtr(base64_encode(random_bytes(18)), '+/', '-_'), '=');
 header(
     "Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; " .
