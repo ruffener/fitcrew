@@ -57,6 +57,22 @@ function fc_email_magic_link_request_origin_valid(?string $origin): bool
         && hash_equals(fc_email_magic_link_expected_origin(), strtolower(rtrim($origin, '/')));
 }
 
+/**
+ * Email completion is protected by a session-bound CSRF token created on the
+ * isolated confirmation page. Some legitimate browsers or hosting paths omit
+ * Origin on a same-origin form POST, so absence is permitted here only. An
+ * explicitly supplied origin must still be the canonical FitCrew origin;
+ * opaque ("null") and foreign origins remain rejected.
+ */
+function fc_email_magic_link_completion_origin_valid(?string $origin): bool
+{
+    if ($origin === null || trim($origin) === '') {
+        return true;
+    }
+
+    return fc_email_magic_link_request_origin_valid($origin);
+}
+
 /** @return array<string,mixed> */
 function fc_email_magic_link_message(string $recipientEmail, string $url): array
 {

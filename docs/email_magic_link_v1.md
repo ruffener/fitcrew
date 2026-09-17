@@ -21,7 +21,7 @@ authenticated `expected_user_id`; matching email strings never authorize it.
 |---|---|---|
 | `/auth/email/request.php` | POST | Same-origin and CSRF protected; applies email/network rate limits, issues a hash-only challenge, sends with `fc_mail_send()`, and always returns the same public response. |
 | `/auth/email/confirm.php#token=...` | GET | Renders confirmation only. The fragment is not sent in the HTTP request. Returns `no-store`, `no-referrer`, and a nonce-restricted no-third-party CSP. |
-| `/auth/email/complete.php` | POST | Same-origin and CSRF protected; applies the completion-attempt limit, atomically validates/consumes the link, resolves identity, creates the FitCrew session, and completes Auth continuation state. |
+| `/auth/email/complete.php` | POST | CSRF protected; validates any supplied `Origin` against the canonical FitCrew origin while tolerating legitimate header omission; applies the completion-attempt limit, atomically validates/consumes the link, resolves identity, creates the FitCrew session, and completes Auth continuation state. |
 
 The confirmation page is standalone and loads no external scripts, images,
 fonts, or stylesheets. A nonce-restricted inline script reads the token from the
@@ -102,8 +102,9 @@ partial-uniqueness pattern is introduced.
 - `.env` and `.env.example` are untouched.
 - Delivery uses the existing configured mail driver and Postmark adapter.
 - A valid EMAIL bearer link may be completed in another browser or device. The
-  confirmation POST remains same-origin and CSRF protected in the arrival
-  browser.
+  confirmation POST remains session-bound and CSRF protected in the arrival
+  browser. A supplied `Origin` must be canonical; a missing `Origin` is allowed
+  because legitimate browser or hosting paths may omit that header.
 - Invitation continuation transfer is committed atomically with EMAIL token,
   LOGIN transaction, identity, and FitCrew-session state. Its former browser
   binding is rejected after transfer.

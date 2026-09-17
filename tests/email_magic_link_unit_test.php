@@ -51,6 +51,27 @@ try {
     emlu_assert(fc_email_magic_link_token_valid_shape($token), 'Generated token is not a valid 256-bit encoding.');
     emlu_assert(strlen((string) base64_decode(strtr($token, '-_', '+/') . '=', true)) === 32, 'Token is not 256 bits.');
     emlu_assert(FC_EMAIL_MAGIC_LINK_TTL_SECONDS === 900, 'Magic-link lifetime is not exactly 15 minutes.');
+    $canonicalOrigin = fc_email_magic_link_expected_origin();
+    emlu_assert(
+        fc_email_magic_link_request_origin_valid($canonicalOrigin),
+        'Canonical EMAIL request origin was rejected.'
+    );
+    emlu_assert(
+        !fc_email_magic_link_request_origin_valid(null)
+            && !fc_email_magic_link_request_origin_valid('https://evil.example'),
+        'EMAIL request origin enforcement was weakened.'
+    );
+    emlu_assert(
+        fc_email_magic_link_completion_origin_valid($canonicalOrigin)
+            && fc_email_magic_link_completion_origin_valid(null)
+            && fc_email_magic_link_completion_origin_valid(''),
+        'EMAIL completion rejected a canonical or legitimately omitted Origin.'
+    );
+    emlu_assert(
+        !fc_email_magic_link_completion_origin_valid('null')
+            && !fc_email_magic_link_completion_origin_valid('https://evil.example'),
+        'EMAIL completion accepted an opaque or foreign Origin.'
+    );
     emlu_assert(
         str_contains($migration, 'token_hash CHAR(64)')
             && !preg_match('/\braw_token\b/i', $migration),
@@ -107,9 +128,10 @@ try {
     );
     emlu_assert(
         str_contains($complete, 'if (!fc_is_post())')
+            && str_contains($complete, 'fc_email_magic_link_completion_origin_valid')
             && str_contains($complete, 'fc_validate_csrf')
             && str_contains($complete, 'fc_email_magic_link_complete('),
-        'Explicit protected completion POST is missing.'
+        'Explicit protected completion POST or bounded Origin policy is missing.'
     );
     emlu_assert(
         str_contains($view, 'Opening this page did not sign you in')

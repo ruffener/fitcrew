@@ -43,7 +43,7 @@ try {
     fc_email_magic_link_complete_rejection('unexpected_failure');
 }
 
-if (!fc_email_magic_link_request_origin_valid($_SERVER['HTTP_ORIGIN'] ?? null)) {
+if (!fc_email_magic_link_completion_origin_valid($_SERVER['HTTP_ORIGIN'] ?? null)) {
     fc_email_magic_link_complete_rejection('origin_failed');
 }
 if (!fc_validate_csrf($_POST['csrf_token'] ?? null)) {
