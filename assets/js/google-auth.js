@@ -18,6 +18,8 @@
     };
     let refreshTimer = null;
     let refreshInFlight = false;
+    let refreshNotBeforeMs = 0;
+    const refreshCooldownMs = 60000;
 
     const setMessage = (text, isError = false) => {
         if (!message) return;
@@ -42,11 +44,15 @@
         config.state = next.state;
         config.nonce = next.nonce;
         config.expiresAt = next.expires_at;
+        refreshNotBeforeMs = Math.max(refreshNotBeforeMs, Date.now() + refreshCooldownMs);
     };
 
     const scheduleRefresh = () => {
         if (refreshTimer !== null) window.clearTimeout(refreshTimer);
-        const delay = Math.max(0, transactionExpiryMs() - Date.now() - 60000);
+        // Invitation expiry can cap even a NEW transaction below the refresh
+        // lead time. Bound both timer and visibility retries instead of looping.
+        const now = Date.now();
+        const delay = Math.max(0, transactionExpiryMs() - now - 60000, refreshNotBeforeMs - now);
         refreshTimer = window.setTimeout(() => refreshTransaction(), Math.min(delay, 2147483647));
     };
 
@@ -78,7 +84,13 @@
 
     const refreshTransaction = async () => {
         if (refreshInFlight || !config.refreshEndpoint) return;
+        if (Date.now() < refreshNotBeforeMs) return;
         refreshInFlight = true;
+        refreshNotBeforeMs = Date.now() + refreshCooldownMs;
+        if (refreshTimer !== null) {
+            window.clearTimeout(refreshTimer);
+            refreshTimer = null;
+        }
         setMessage('Refreshing secure Google sign-in…');
         const body = new FormData();
         body.set('transaction_id', config.transactionId);

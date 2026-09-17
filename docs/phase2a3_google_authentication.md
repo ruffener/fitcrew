@@ -51,6 +51,28 @@ snapshot. A still-current continuation is released from the old transaction and
 atomically rebound to the new one. Cancelled, expired, accepted, or rotated
 Website authority cannot be refreshed.
 
+The browser spaces automatic refresh attempts at least 60 seconds apart. Installing any
+replacement transaction also starts a 60-second cooldown. This matters when a
+still-valid invitation caps the replacement transaction to less than the normal
+60-second refresh lead time: the browser must not immediately refresh it again.
+Visibility events share the same cooldown, including after a failed request.
+The cooldown never extends server-side transaction or invitation validity.
+After expiry or rejection, the server remains authoritative; a new Google click
+is still required for fresh state and nonce.
+
+If the invitation continuation is already bound to an email sign-in, the login
+page displays "Sign-in in progress" and asks the person to complete that sign-in.
+It does not replace the selected provider or treat this expected state as a
+Google outage. Unexpected preparation errors retain the temporary-unavailability
+message and an appropriate retry status.
+
+Browser-script regression proof (executes the production JavaScript with a
+controlled clock, Google callback, visibility events, and server responses):
+
+```bash
+node tests/google_auth_refresh_browser_test.js
+```
+
 ## Prelaunch account-creation gate
 
 `PRELAUNCH_AUTH_PROOF_MODE=true` gates only **new** Google identities. A new account is permitted only when a validated, provider-verified email claim matches `PRELAUNCH_AUTH_ALLOWED_EMAILS` from environment configuration.

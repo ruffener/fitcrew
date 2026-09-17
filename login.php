@@ -57,10 +57,16 @@ if (fc_google_auth_enabled()) {
             'refresh_endpoint' => '/auth/google/refresh.php',
         ];
     } catch (Throwable $e) {
-        fc_log('warning', 'Unable to prepare Google authentication transaction.', [
-            'reason' => 'google_auth_prepare_failed',
-        ]);
-        $googleAuthConfig['reason'] = 'Google authentication is temporarily unavailable.';
+        if ($e instanceof DomainException && $e->getMessage() === 'auth_provider_choice_in_progress') {
+            $googleAuthConfig['reason'] = 'A sign-in choice is already in progress in this browser. Complete that sign-in to continue.';
+            $googleAuthConfig['status'] = 'Sign-in in progress';
+        } else {
+            fc_log('warning', 'Unable to prepare Google authentication transaction.', [
+                'reason' => 'google_auth_prepare_failed',
+            ]);
+            $googleAuthConfig['reason'] = 'Google authentication is temporarily unavailable.';
+            $googleAuthConfig['status'] = 'Try again';
+        }
     }
 }
 

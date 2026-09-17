@@ -35,6 +35,7 @@ require_once __DIR__ . '/identity/ids.php';
 require_once __DIR__ . '/identity/users.php';
 require_once __DIR__ . '/identity/auth_identities.php';
 require_once __DIR__ . '/identity/contact_emails.php';
+require_once __DIR__ . '/auth/account_presence.php';
 require_once __DIR__ . '/identity/session_records.php';
 require_once __DIR__ . '/identity/auth_transactions.php';
 require_once __DIR__ . '/identity/audit_events.php';

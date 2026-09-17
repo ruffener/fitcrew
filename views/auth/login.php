@@ -39,7 +39,7 @@ $emailCsrfToken = (string) ($emailAuthConfig['csrf_token'] ?? fc_csrf_token());
                     <strong>Continue with Google</strong>
                     <small><?= fc_e((string) ($googleAuthConfig['reason'] ?? 'Authentication setup required')) ?></small>
                 </span>
-                <span class="provider-status">Setup required</span>
+                <span class="provider-status"><?= fc_e((string) ($googleAuthConfig['status'] ?? 'Setup required')) ?></span>
             </button>
         <?php endif; ?>
 
