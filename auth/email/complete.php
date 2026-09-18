@@ -15,9 +15,11 @@ function fc_email_magic_link_complete_rejection(string $reason): never
         fc_email_magic_link_audit_rejection(fc_db(), $reason);
     } catch (Throwable) {
     }
-    $message = $reason === 'account_reconciliation_required'
-        ? 'FitCrew could not safely match this email to one account. Sign in with your existing provider and try again. If this continues, contact support. No account was changed.'
-        : 'This email sign-in link is invalid, expired, replaced, or already used.';
+    $message = match ($reason) {
+        'prelaunch_denied' => 'New FitCrew accounts currently require a Challenge invitation. Open your invitation to continue, or sign in with an existing FitCrew account.',
+        'account_reconciliation_required' => 'FitCrew could not safely match this email to one account. Sign in with your existing provider and try again. If this continues, contact support. No account was changed.',
+        default => 'This email sign-in link is invalid, expired, replaced, or already used.',
+    };
     fc_flash('error', $message);
     fc_redirect('/login.php');
 }

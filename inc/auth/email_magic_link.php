@@ -10,9 +10,12 @@ const FC_EMAIL_MAGIC_LINK_TTL_SECONDS = 900;
 const FC_EMAIL_MAGIC_LINK_REQUEST_MESSAGE =
     'If that email can be used, a FitCrew sign-in link will arrive shortly.';
 
-function fc_email_request_require_acknowledgement(): void
+const FC_EMAIL_MAGIC_LINK_RETRY_MESSAGE =
+    'Your sign-in page was refreshed. Please request your email sign-in link again.';
+
+function fc_email_request_require_acknowledgement(string $mode = 'signin'): void
 {
-    $_SESSION['fitcrew_email_request_ack'] = 'signin';
+    $_SESSION['fitcrew_email_request_ack'] = $mode === 'retry' ? 'retry' : 'signin';
 }
 
 function fc_email_magic_link_subject(string $email): string

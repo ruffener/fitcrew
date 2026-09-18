@@ -193,7 +193,7 @@ the supported Google-first then email path does not need it.
 
 ## Required request acknowledgement
 
-All ordinary request outcomes retain the same message:
+After request Origin and CSRF validation, all ordinary request outcomes retain the same message:
 
 “If that email can be used, a FitCrew sign-in link will arrive shortly.”
 
@@ -211,3 +211,24 @@ Proof: `auth_email_account_unit_test.php`,
 `auth_email_account_foundation_test.php`, `email_auth_ack_browser_test.js`, and
 all existing EMAIL, Google, identity, invitation, private-presence, and mail
 transport regressions. No new migration or environment setting is needed.
+
+## Rejected form and closed-prelaunch feedback
+
+If an email request fails Origin or CSRF validation, it never reaches challenge
+issuance or mail transport. Auth records the rejection and shows a required
+retry modal on the refreshed login page, explicitly stating that no email was
+requested. Acknowledging the modal uses the existing protected POST. All requests
+that pass those request protections retain the exact generic email message,
+regardless of account presence, rate limit or transport result.
+
+A valid mailbox proof that cannot create an account during closed prelaunch now
+explains that new accounts require a Challenge invitation. Invalid, expired,
+replaced, and replayed proofs retain the generic invalid-link response. This is
+feedback only: no invitation, account, session, origin or CSRF rule is weakened.
+
+Google refresh rejections now record an Auth audit reason with operation=refresh
+and tell the user to reload when the page proof cannot be verified. An expired
+Google transaction with intact browser/session authority still uses the accepted
+refresh flow. Loss of that browser/session authority requires a fresh page;
+transaction refresh cannot recreate it. No raw token, email, CSRF, state or nonce
+is added to rejection audit metadata.

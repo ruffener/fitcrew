@@ -1,7 +1,7 @@
 <?php /** @var string $title */ /** @var string $contentView */ ?>
 <?php
 // An acknowledgement left open before deployment remains dismissible.
-$emailAckPending = in_array($_SESSION['fitcrew_email_request_ack'] ?? null, ['signin', 'link'], true);
+$emailAckPending = in_array($_SESSION['fitcrew_email_request_ack'] ?? null, ['signin', 'link', 'retry'], true);
 $emailAssetVersion = (string) max(
     filemtime(fc_path('assets/css/auth-email.css')),
     filemtime(fc_path('assets/js/auth-email.js'))

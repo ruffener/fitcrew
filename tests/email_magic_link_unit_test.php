@@ -94,9 +94,10 @@ try {
         'Request endpoint lacks same-origin or CSRF enforcement.'
     );
     emlu_assert(
-        substr_count($request, 'fc_email_request_require_acknowledgement();') >= 3
+        substr_count($request, 'fc_email_request_require_acknowledgement();') === 1
+            && substr_count($request, "fc_email_request_require_acknowledgement('retry');") === 2
             && !str_contains($request, 'identity exists'),
-        'Request endpoint does not preserve a generic non-enumerating response.'
+        'Request endpoint does not separate rejected forms from generic non-enumerating request results.'
     );
     foreach ([
         ["'auth.email_magic.request.email'", '5', '900'],

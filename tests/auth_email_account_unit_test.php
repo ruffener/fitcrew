@@ -46,6 +46,14 @@ try {
     ob_start();require fc_path('views/layouts/auth.php');$html=ob_get_clean();
     aeu_assert(str_contains($html,'<div inert>') && str_contains($html,'id="fitcrew-email-request-ack"'), 'Background remains actionable before acknowledgement.');
     aeu_assert(!str_contains($html,'/auth/email/link.php') && !str_contains($html,'Add email sign-in'), 'Setup detour remains visible.');
+    fc_email_request_require_acknowledgement('retry');
+    ob_start();require fc_path('views/layouts/auth.php');$retryHtml=ob_get_clean();
+    aeu_assert(str_contains($retryHtml,'<div inert>') && str_contains($retryHtml,FC_EMAIL_MAGIC_LINK_RETRY_MESSAGE), 'Stale form lacks required retry acknowledgement.');
+    aeu_assert(!str_contains($retryHtml,FC_EMAIL_MAGIC_LINK_REQUEST_MESSAGE) && str_contains($retryHtml,'No sign-in email was requested.'), 'Rejected form falsely claims that email may arrive.');
+    $retryDom=new DOMDocument();@$retryDom->loadHTML($retryHtml);$retryXpath=new DOMXPath($retryDom);
+    aeu_assert($retryXpath->query('//dialog/form[@method="post"][@action="/auth/email/acknowledge.php"]/input[@name="csrf_token"]')->length===1, 'Retry acknowledgement bypasses protected POST.');
+    fc_email_request_require_acknowledgement('untrusted-value');
+    aeu_assert($_SESSION['fitcrew_email_request_ack']==='signin', 'Unexpected mode changed account-neutral feedback.');
     unset($_SESSION['fitcrew_email_request_ack']);
     ob_start();require fc_path('views/layouts/auth.php');$html=ob_get_clean();
     aeu_assert(!str_contains($html,'<div inert>') && !str_contains($html,'id="fitcrew-email-request-ack"'), 'Acknowledgement persists after clearing.');
@@ -55,10 +63,10 @@ try {
     $ack=$read('auth/email/acknowledge.php');
     aeu_assert(str_contains($ack,'fc_validate_csrf') && str_contains($ack,'fc_email_magic_link_completion_origin_valid') && str_contains($ack,'if (!fc_is_post())') && str_contains($ack,"fc_redirect('/login.php')"), 'Acknowledgement is not fixed and POST-protected.');
     $request=$read('auth/email/request.php');
-    aeu_assert(substr_count($request,'fc_email_request_require_acknowledgement();')===3 && !str_contains($request,'fc_flash('), 'Request outcomes do not share the mandatory acknowledgement.');
+    aeu_assert(substr_count($request,'fc_email_request_require_acknowledgement();')===1 && substr_count($request,"fc_email_request_require_acknowledgement('retry');")===2 && !str_contains($request,'fc_flash('), 'Request outcomes do not share the mandatory acknowledgement.');
     foreach (['link.php','link-confirm.php','link-complete.php'] as $route) {
         $source=$read('auth/email/'.$route);
         aeu_assert(str_contains($source,"header('Location: /login.php', true, 303)") && !str_contains($source,'$_POST') && !str_contains($source,'fc_db'), 'Retired route still accepts setup authority.');
     }
-    fwrite(STDOUT,"Auth email account unit: PASS\n- trusted Google mailbox matrix; no provider-text or alias inference\n- mandatory generic modal, accessible labels, CSRF and no-JS inert background\n- token privacy/origin rules and retired setup routes\n");
+    fwrite(STDOUT,"Auth email account unit: PASS\n- trusted Google mailbox matrix; no provider-text or alias inference\n- mandatory generic modal, accessible labels, CSRF and no-JS inert background\n- rejected form retry modal; token privacy/origin rules and retired setup routes\n");
 } catch (Throwable $error) { fwrite(STDERR,'[FAIL] '.$error->getMessage().PHP_EOL); exit(1); }

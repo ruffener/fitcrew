@@ -18,7 +18,7 @@ if (!fc_email_magic_link_request_origin_valid($_SERVER['HTTP_ORIGIN'] ?? null)) 
         fc_email_magic_link_audit_rejection(fc_db(), 'origin_failed');
     } catch (Throwable) {
     }
-    fc_email_request_require_acknowledgement();
+    fc_email_request_require_acknowledgement('retry');
     fc_redirect('/login.php');
 }
 
@@ -27,7 +27,7 @@ if (!fc_validate_csrf($_POST['csrf_token'] ?? null)) {
         fc_email_magic_link_audit_rejection(fc_db(), 'csrf_failed');
     } catch (Throwable) {
     }
-    fc_email_request_require_acknowledgement();
+    fc_email_request_require_acknowledgement('retry');
     fc_redirect('/login.php');
 }
 
