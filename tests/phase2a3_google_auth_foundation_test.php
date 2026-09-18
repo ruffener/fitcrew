@@ -58,7 +58,7 @@ try {
     fc_google_test_assert((int) $pdo->query('SELECT COUNT(*) FROM user_auth_identities')->fetchColumn() === $baselineIdentities + 1, 'first login identity count incorrect');
 
     $contactCount = (int) $pdo->query('SELECT COUNT(*) FROM user_contact_emails')->fetchColumn();
-    fc_google_test_assert($contactCount === $baselineContacts, 'Google login automatically created a canonical contact email');
+    fc_google_test_assert($contactCount === $baselineContacts, 'Third-party Google email without hd automatically created a canonical contact email');
 
     $storedSession = $pdo->prepare('SELECT session_id_hash, revoked_at FROM user_sessions WHERE user_id = :user_id ORDER BY id DESC LIMIT 1');
     $storedSession->execute([':user_id' => $userId]);
@@ -196,7 +196,7 @@ try {
     echo "Phase 2A3 Google authentication foundation proof: PASS\n";
     echo "- first-time Google identity → one user / one identity / one session: PASS\n";
     echo "- returning Google identity → same user / same identity / new session: PASS\n";
-    echo "- provider email does not auto-create contact email: PASS\n";
+    echo "- third-party email without hd does not establish canonical ownership: PASS\n";
     echo "- matching contact email does not auto-merge users: PASS\n";
     echo "- prelaunch non-allowed identity denied with no user/identity creation: PASS\n";
     echo "- SUSPENDED account denied: PASS\n";

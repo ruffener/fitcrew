@@ -6,7 +6,7 @@ Phase 2A2 establishes provider-neutral account and authentication state contract
 
 - `users` — durable FitCrew Challenge account.
 - `user_auth_identities` — external identities that can prove who the account holder is.
-- `user_contact_emails` — communication and invitation addresses; not login identity truth.
+- `user_contact_emails` — communication addresses and database-enforced canonical VERIFIED email ownership. A completed ordinary EMAIL proof may now resolve its unique verified owner; unverified addresses never authenticate.
 - `user_sessions` — server-side session records containing only hashed session identifiers.
 - `auth_transactions` — short-lived, single-use, provider/intent-bound authentication transaction evidence and protected temporary provider-flow secrets.
 - `audit_events` — append-oriented identity/security audit records with sensitive metadata redaction.
@@ -38,7 +38,12 @@ The provider observation is preserved as a true tri-state:
 
 `email_verification_observed_at` may record when that provider claim was observed. It does not replace the tri-state claim itself.
 
-A provider email value or its verification state never causes automatic account linking or merging.
+A stored provider email value or verification flag never automatically links or
+merges accounts. The September 18 user-directed Auth revision permits fresh,
+validated, authoritative Google mailbox evidence to establish canonical VERIFIED
+ownership on its issuer/sub user. A later valid EMAIL LOGIN proof can reuse that
+owner without a separate setup action. Other descriptive provider email remains
+reconciliation evidence only. See the current Google and EMAIL Auth documents.
 
 ## Contact email
 

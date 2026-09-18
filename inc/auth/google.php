@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/invitation_continuations.php';
+require_once __DIR__ . '/email_magic_link.php';
 
 const FC_GOOGLE_ISSUERS = ['accounts.google.com', 'https://accounts.google.com'];
 
@@ -288,7 +288,7 @@ function fc_google_prelaunch_allows_new_account(array $claims): bool
 
 /**
  * @param callable(string):array|false $verifier
- * @return array{issuer:string,provider_subject:string,email_at_provider:?string,provider_email_verified:?int,display_name:?string,nonce:string}
+ * @return array{issuer:string,provider_subject:string,email_at_provider:?string,provider_email_verified:?int,display_name:?string,nonce:string,hosted_domain:?string}
  */
 function fc_google_verify_id_token_with(
     string $rawIdToken,
@@ -309,7 +309,7 @@ function fc_google_verify_id_token_with(
     return fc_google_validate_verified_payload($payload, $expectedClientId, $expectedNonceHash, $now ?? time());
 }
 
-/** @return array{issuer:string,provider_subject:string,email_at_provider:?string,provider_email_verified:?int,display_name:?string,nonce:string} */
+/** @return array{issuer:string,provider_subject:string,email_at_provider:?string,provider_email_verified:?int,display_name:?string,nonce:string,hosted_domain:?string} */
 function fc_google_verify_id_token(string $rawIdToken, string $expectedNonceHash): array
 {
     $clientId = fc_google_auth_client_id();
@@ -338,7 +338,7 @@ function fc_google_verify_id_token(string $rawIdToken, string $expectedNonceHash
     }
 }
 
-/** @return array{issuer:string,provider_subject:string,email_at_provider:?string,provider_email_verified:?int,display_name:?string,nonce:string} */
+/** @return array{issuer:string,provider_subject:string,email_at_provider:?string,provider_email_verified:?int,display_name:?string,nonce:string,hosted_domain:?string} */
 function fc_google_validate_verified_payload(array $payload, string $expectedClientId, string $expectedNonceHash, int $now): array
 {
     $issuer = trim((string) ($payload['iss'] ?? ''));
@@ -385,7 +385,32 @@ function fc_google_validate_verified_payload(array $payload, string $expectedCli
         'provider_email_verified' => $verifiedClaim,
         'display_name' => $displayName,
         'nonce' => $nonce,
+        'hosted_domain' => is_string($payload['hd'] ?? null) ? trim($payload['hd']) : null,
     ];
+}
+
+/**
+ * Called only with claims from a freshly verified Google ID token. Google is
+ * authoritative for verified Gmail mailboxes and verified Workspace accounts
+ * with a signed hd claim; other provider email remains descriptive evidence.
+ */
+function fc_google_authoritative_email(array $claims): ?string
+{
+    if (!in_array($claims['issuer'] ?? null, FC_GOOGLE_ISSUERS, true)
+        || ($claims['provider_email_verified'] ?? null) !== 1) {
+        return null;
+    }
+    $email = $claims['email_at_provider'] ?? null;
+    if (!is_string($email) || strlen(trim($email)) > 254
+        || filter_var(trim($email), FILTER_VALIDATE_EMAIL) === false) {
+        return null;
+    }
+    $email = fc_contact_email_canonicalize($email);
+    $domain = substr($email, strrpos($email, '@') + 1);
+    $hostedDomain = $claims['hosted_domain'] ?? null;
+    $workspace = is_string($hostedDomain) && $hostedDomain !== ''
+        && filter_var($hostedDomain, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false;
+    return $domain === 'gmail.com' || $workspace ? $email : null;
 }
 
 /** @return array{user:array<string,mixed>,identity:array<string,mixed>,new_account:bool,destination:string} */
@@ -438,6 +463,22 @@ function fc_google_complete_verified_login(
             (string) $claims['provider_subject'],
             true
         );
+        // Resolve Google by issuer/sub first. Canonical ownership may be
+        // established on this user, but can never move an existing identity or
+        // select another user merely because an email matches.
+        $verifiedEmail = fc_google_authoritative_email($claims);
+        if ($verifiedEmail !== null) {
+            $emailIdentity = fc_auth_identity_find_oidc(
+                $pdo, 'EMAIL', FC_EMAIL_MAGIC_LINK_ISSUER, $verifiedEmail, true
+            );
+            $verifiedOwner = fc_contact_email_find_verified_owner($pdo, $verifiedEmail, true);
+            foreach ([$emailIdentity, $verifiedOwner] as $existingOwner) {
+                if ($existingOwner !== null
+                    && ($identity === null || (int) $existingOwner['user_id'] !== (int) $identity['user_id'])) {
+                    throw new DomainException('account_reconciliation_required');
+                }
+            }
+        }
         $newAccount = false;
 
         if ($identity !== null) {
@@ -523,6 +564,10 @@ function fc_google_complete_verified_login(
                 'outcome' => 'SUCCESS',
                 'metadata' => ['provider' => 'GOOGLE'],
             ]);
+        }
+
+        if ($verifiedEmail !== null) {
+            fc_contact_email_ensure_verified($pdo, (int) $user['id'], $verifiedEmail, 'GOOGLE_AUTH');
         }
 
         fc_auth_identity_update_provider_claims($pdo, (int) $identity['id'], [
@@ -617,6 +662,7 @@ function fc_google_audit_rejection(PDO $pdo, string $reason, ?int $actorUserId =
         'credential_failed',
         'nonce_failed',
         'account_denied',
+        'account_reconciliation_required',
         'prelaunch_denied',
         'invitation_failed',
         'unexpected_failure',

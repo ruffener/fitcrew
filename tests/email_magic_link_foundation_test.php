@@ -602,20 +602,16 @@ try {
     $ownedContact = emlf_issue($pdo, 'email-magic-contact-owned@example.TEST');
     $ownedContactArrival = emlf_use_browser('owned-contact-arrival');
     $usersBeforeOwnedContact = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
-    emlf_expect_domain(
-        fn () => fc_email_magic_link_complete(
-            $pdo,
-            (string) $ownedContact['token'],
-            $ownedContactArrival,
-            'email-magic-owned-contact-session'
-        ),
-        'account_reconciliation_required',
-        'Canonical verified-email owner without EMAIL identity'
+    $ownedResult = fc_email_magic_link_complete(
+        $pdo, (string) $ownedContact['token'], $ownedContactArrival, 'email-magic-owned-contact-session'
     );
-    emlf_assert(
-        (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === $usersBeforeOwnedContact,
-        'Existing canonical verified-email claim allowed a second user.'
-    );
+    emlf_assert(!$ownedResult['new_account'] && (int) $ownedResult['user']['id'] === (int) $contactOwner['id'],
+        'Canonical verified owner was not reused.');
+    emlf_assert((int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === $usersBeforeOwnedContact,
+        'Existing canonical verified-email claim allowed a second user.');
+    $claim = $pdo->prepare('SELECT COUNT(*) FROM auth_invitation_admission_claims WHERE invitation_public_id=?');
+    $claim->execute([$invitations['F']['public_id']]);
+    emlf_assert((int) $claim->fetchColumn() === 0, 'Returning canonical owner consumed new-account admission.');
 
     // Exact server-side rate limits execute without retaining raw subjects.
     $pdo->beginTransaction();
@@ -670,7 +666,7 @@ try {
     fwrite(STDOUT, "- rollback preserves admission and token retry: PASS\n");
     fwrite(STDOUT, "- provider-email evidence triggers reconciliation without link/merge: PASS\n");
     fwrite(STDOUT, "- verification-UNKNOWN provider email cannot transfer ownership: PASS\n");
-    fwrite(STDOUT, "- existing canonical verified-email owner prevents second user: PASS\n");
+    fwrite(STDOUT, "- canonical owner gains EMAIL access without second user or admission claim: PASS\n");
     fwrite(STDOUT, "- executable per-email and completion-network limits: PASS\n");
     fwrite(STDOUT, "- rate-limit buckets retain keyed evidence only: PASS\n");
     fwrite(STDOUT, "- Crew membership untouched by Auth: PASS\n");

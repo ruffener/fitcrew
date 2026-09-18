@@ -10,6 +10,11 @@ const FC_EMAIL_MAGIC_LINK_TTL_SECONDS = 900;
 const FC_EMAIL_MAGIC_LINK_REQUEST_MESSAGE =
     'If that email can be used, a FitCrew sign-in link will arrive shortly.';
 
+function fc_email_request_require_acknowledgement(): void
+{
+    $_SESSION['fitcrew_email_request_ack'] = 'signin';
+}
+
 function fc_email_magic_link_subject(string $email): string
 {
     $email = trim($email);
@@ -577,60 +582,7 @@ function fc_email_magic_link_apply_committed_arrival_context(array $result): voi
 
 function fc_email_magic_link_ensure_verified_contact(PDO $pdo, int $userId, string $emailSubject): void
 {
-    if (!$pdo->inTransaction()) {
-        throw new LogicException('Verified email contact reconciliation requires an active transaction.');
-    }
-
-    $owner = fc_contact_email_find_verified_owner($pdo, $emailSubject, true);
-    if ($owner !== null && (int) $owner['user_id'] !== $userId) {
-        throw new DomainException('account_reconciliation_required');
-    }
-
-    $find = $pdo->prepare(
-        'SELECT id, verification_status FROM user_contact_emails ' .
-        'WHERE user_id = :user_id AND email_canonical = :email AND removed_at IS NULL LIMIT 1 FOR UPDATE'
-    );
-    $find->execute([':user_id' => $userId, ':email' => $emailSubject]);
-    $existing = $find->fetch(PDO::FETCH_ASSOC);
-    $now = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:s.u');
-    if ($existing !== false) {
-        $update = $pdo->prepare(
-            'UPDATE user_contact_emails ' .
-            'SET verification_status = \'VERIFIED\', verified_at = :verified_at, ' .
-            '    verified_email_canonical = :email, source_key = \'EMAIL_MAGIC_LINK\' ' .
-            'WHERE id = :id AND user_id = :user_id'
-        );
-        try {
-            $update->execute([
-                ':verified_at' => $now,
-                ':email' => $emailSubject,
-                ':id' => (int) $existing['id'],
-                ':user_id' => $userId,
-            ]);
-        } catch (PDOException $error) {
-            if ((string) $error->getCode() === '23000' && (int) ($error->errorInfo[1] ?? 0) === 1062) {
-                throw new DomainException('canonical_verified_email_conflict', 0, $error);
-            }
-            throw $error;
-        }
-        return;
-    }
-
-    $primary = $pdo->prepare(
-        'SELECT id FROM user_contact_emails ' .
-        'WHERE user_id = :user_id AND removed_at IS NULL AND is_primary_for_contact = 1 ' .
-        'LIMIT 1 FOR UPDATE'
-    );
-    $primary->execute([':user_id' => $userId]);
-    fc_contact_email_create(
-        $pdo,
-        $userId,
-        $emailSubject,
-        'EMAIL_MAGIC_LINK',
-        $primary->fetchColumn() === false,
-        'VERIFIED',
-        $now
-    );
+    fc_contact_email_ensure_verified($pdo, $userId, $emailSubject, 'EMAIL_MAGIC_LINK');
 }
 
 /** @return array{user:array<string,mixed>,identity:array<string,mixed>,new_account:bool,destination:string,continuation_public_id:?string} */
@@ -676,14 +628,18 @@ function fc_email_magic_link_complete(
         $newAccount = false;
         $verifiedOwner = fc_contact_email_find_verified_owner($pdo, $emailSubject, true);
 
-        if ($identity !== null) {
-            if ($verifiedOwner !== null && (int) $verifiedOwner['user_id'] !== (int) $identity['user_id']) {
+        if ($identity !== null || $verifiedOwner !== null) {
+            if ($identity !== null && $verifiedOwner !== null
+                && (int) $verifiedOwner['user_id'] !== (int) $identity['user_id']) {
                 throw new DomainException('account_reconciliation_required');
             }
-            if ((string) $identity['identity_status'] !== 'ACTIVE' || (string) $identity['account_status'] !== 'ACTIVE') {
+            if ($identity !== null && (string) $identity['identity_status'] !== 'ACTIVE') {
                 throw new DomainException('fitcrew_account_access_denied');
             }
-            $user = fc_user_find_by_id($pdo, (int) $identity['user_id'], true);
+            // The completed mailbox proof may use the unique canonical VERIFIED
+            // owner. A descriptive provider email alone never selects an account.
+            $userId = (int) ($identity['user_id'] ?? $verifiedOwner['user_id']);
+            $user = fc_user_find_by_id($pdo, $userId, true);
             if ($user === null || (string) $user['account_status'] !== 'ACTIVE') {
                 throw new DomainException('fitcrew_account_access_denied');
             }
@@ -699,7 +655,7 @@ function fc_email_magic_link_complete(
                 }
             }
         } else {
-            if ($verifiedOwner !== null || fc_auth_identity_email_evidence_owners($pdo, $emailSubject) !== []) {
+            if (fc_auth_identity_email_evidence_owners($pdo, $emailSubject) !== []) {
                 throw new DomainException('account_reconciliation_required');
             }
             if ($invitationContinuation === null) {
@@ -719,30 +675,10 @@ function fc_email_magic_link_complete(
                 (int) $invitationContinuation['id'],
                 (string) $invitationContinuation['invitation_public_id']
             );
-
             $created = fc_user_create($pdo, null, 'ACTIVE', 'USER');
             $user = fc_user_find_by_id($pdo, (int) $created['id'], true);
             if ($user === null) {
                 throw new RuntimeException('Unable to load newly created FitCrew user.');
-            }
-            $createdIdentity = fc_auth_identity_create($pdo, (int) $created['id'], [
-                'provider_key' => 'EMAIL',
-                'issuer' => FC_EMAIL_MAGIC_LINK_ISSUER,
-                'provider_subject' => $emailSubject,
-                'email_at_provider' => $emailSubject,
-                'provider_email_verified' => 1,
-                'email_verification_observed_at' => new DateTimeImmutable('now', new DateTimeZone('UTC')),
-                'identity_status' => 'ACTIVE',
-            ]);
-            $identity = fc_auth_identity_find_oidc(
-                $pdo,
-                'EMAIL',
-                FC_EMAIL_MAGIC_LINK_ISSUER,
-                $emailSubject,
-                true
-            );
-            if ($identity === null || (int) $identity['id'] !== (int) $createdIdentity['id']) {
-                throw new RuntimeException('Unable to load newly created EMAIL identity.');
             }
             $newAccount = true;
             fc_audit_event_write($pdo, [
@@ -753,6 +689,24 @@ function fc_email_magic_link_complete(
                 'outcome' => 'SUCCESS',
                 'metadata' => ['provider' => 'EMAIL'],
             ]);
+        }
+
+        if ($identity === null) {
+            $createdIdentity = fc_auth_identity_create($pdo, (int) $user['id'], [
+                'provider_key' => 'EMAIL',
+                'issuer' => FC_EMAIL_MAGIC_LINK_ISSUER,
+                'provider_subject' => $emailSubject,
+                'email_at_provider' => $emailSubject,
+                'provider_email_verified' => 1,
+                'email_verification_observed_at' => new DateTimeImmutable('now', new DateTimeZone('UTC')),
+                'identity_status' => 'ACTIVE',
+            ]);
+            $identity = fc_auth_identity_find_oidc(
+                $pdo, 'EMAIL', FC_EMAIL_MAGIC_LINK_ISSUER, $emailSubject, true
+            );
+            if ($identity === null || (int) $identity['id'] !== (int) $createdIdentity['id']) {
+                throw new RuntimeException('Unable to load newly created EMAIL identity.');
+            }
         }
 
         fc_auth_identity_update_provider_claims($pdo, (int) $identity['id'], [

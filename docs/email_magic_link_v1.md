@@ -9,11 +9,21 @@ Status: Family Alpha implementation candidate. Public signup remains closed.
 - Subject: the canonical mailbox address proven by the completed magic link
 - Identity lookup: `provider_key + issuer + provider_subject`
 
-The EMAIL provider does not change the meaning of email claims from Google,
-Apple, or Microsoft. Those claims are never used to find, link, or merge an
-EMAIL identity. A new authentication method may be attached to an existing
-FitCrew user only through a future explicit `LINK_IDENTITY` flow bound to an
-authenticated `expected_user_id`; matching email strings never authorize it.
+Ordinary EMAIL LOGIN now accepts a completed mailbox proof for the unique
+canonical VERIFIED email owner. If that user has no EMAIL identity yet, Auth
+creates that internal identity on the same user in the login transaction. There
+is no separate setup page, extra sign-in, or new account. Google continues to
+resolve by validated issuer + subject, never by an email search.
+
+Fresh validated Google authentication may establish canonical ownership when
+Google is authoritative for that mailbox (verified Gmail, or verified Workspace
+with a signed `hd` claim). Stored provider claims, other providers' descriptive
+email, unverified contacts, and email text equality alone do not establish it.
+See `phase2a3_google_authentication.md` for the precise authority rule.
+
+This is the user-directed September 18, 2026 revision of the prior explicit
+email-setup requirement. It does not merge users, transfer identities, weaken
+canonical uniqueness, or turn LINK_IDENTITY proof into LOGIN proof.
 
 ## Endpoints
 
@@ -82,10 +92,13 @@ evidence and marks the prior challenge `REPLACED`, making the old URL unusable.
    database transaction. After commit, it places only the opaque continuation
    ID in the arrival PHP session and redirects to the fixed destination.
 
-For an existing EMAIL identity, the canonical user is reused. For an unknown
-EMAIL identity, account creation is denied unless a current Family Alpha Crew
-invitation continuation can claim its one-account admission authority. The
-invited address is neither received nor compared by Auth.
+For an existing EMAIL identity or a unique canonical VERIFIED email owner,
+the same active user is reused. The latter gains its internal EMAIL identity
+only after valid mailbox proof. Neither case consumes new-account invitation
+admission. If neither exists, descriptive provider-email matches require
+reconciliation; otherwise creation still requires a current Family Alpha Crew
+invitation's one-account admission authority. Auth does not compare the invited
+address to the login mailbox.
 
 After invitation-bound authentication, Auth returns only to
 `/crew-invite.php`. Website still owns explicit invitation acceptance and Crew
@@ -93,13 +106,13 @@ membership creation. Auth never creates membership.
 
 ## Verified contact behavior
 
-Successful EMAIL proof may create or update a `VERIFIED` canonical email claim
-on the already resolved or newly created user. One canonical verified email may
-belong to only one FitCrew user. An existing EMAIL identity remains issuer +
-mailbox; a verified claim owned by another user or matching federated-provider
-email evidence produces `ACCOUNT RECONCILIATION REQUIRED`. It never
-auto-selects, links, merges, or transfers a user or identity. A future explicit
-link requires an authenticated user plus a `LINK_IDENTITY` transaction.
+Successful EMAIL proof creates or updates VERIFIED contact ownership on the
+resolved user. One canonical verified email belongs to one FitCrew user. If an
+EMAIL identity and a canonical owner exist but point to different users, Auth
+stops without changing either account. Inactive users or EMAIL identities remain
+blocked. A matching provider claim without canonical ownership cannot select a
+user. Account/identity, contact, session, invitation continuation, and token
+consumption changes commit or roll back together.
 
 Migration `0340_enforce_verified_email_uniqueness.sql` performs a duplicate
 preflight and then enforces the verified canonical claim with a MariaDB-safe
@@ -127,8 +140,11 @@ partial-uniqueness pattern is introduced.
 ## Confirmation-policy production browser proof
 
 Run only after the correction's exact main commit is successfully deployed.
-Use an existing EMAIL identity or an authorized invitation flow; a matching
-Google mailbox alone is not authorization to link identities or create users.
+Use an existing EMAIL identity, a canonical verified-email owner, or an
+authorized invitation flow. For an older Google account with no canonical email
+record, first sign in with Google after deploying this revision. That fresh
+validated login establishes ownership; historical provider claims are not
+backfilled from SQL.
 
 1. Request one fresh link, open only that newest email, and stop on the
    confirmation page. Do not reuse a tab loaded before deployment.
@@ -154,74 +170,44 @@ They do not replace this real browser proof. If the origin is now canonical but
 completion still fails, inspect the newest rejection reason; do not weaken the
 origin or CSRF checks, and do not attribute every generic rejection to expiry.
 
-## Explicitly add email sign-in to an existing account
+## Ordinary Google then email experience
 
-A provider's descriptive email is reconciliation evidence, not an EMAIL sign-in
-identity or canonical verified-email ownership. An ordinary email LOGIN must not
-silently select a Google/Microsoft user by matching that claim. A provider-only
-account therefore needs an explicit Add email sign-in setup once.
+1. Sign in through Google. Auth creates or reuses the Google account and, for
+   authoritative verified Google mailboxes, establishes its canonical email.
+2. Sign out and enter that mailbox in the normal email sign-in form.
+3. Acknowledge the generic request modal, open the newest email, and confirm.
+4. Auth signs in to the same FitCrew user. Account data, roles, and memberships
+   remain attached to that user. Subsequent Google or email sign-ins reuse it.
 
-Auth exposes `/auth/email/link.php`, linked from the login screen. Signed-out users
-first authenticate with their existing method; a short-lived session preference
-returns ordinary APP_HOME authentication to this fixed setup route. Invitation
-returns keep priority and are never rewritten. This preference conveys no linking
-authority. A signed-in user can visit the setup route directly.
+No separate Add sign-in method action is required. Existing setup routes now
+return a fixed 303 to `/login.php` for all requests and do not inspect tokens,
+send mail, access SQL, or authenticate. The old setup helper is inert. Existing
+LINK_IDENTITY challenges remain unusable for ordinary EMAIL LOGIN and expire
+normally. The retired deployment-owned paths are retained until a governed
+manifest-deletion pass, avoiding a routine deployment that leaves old executable
+setup code live. Old setup views are inert redirects as well.
 
-The user explicitly requests adding an address, receives a Postmark confirmation
-through the existing mail transport, opens it in the same initiating signed-in
-browser, and confirms Add email sign-in. The server requires an active account,
-active existing sign-in identity, and original authenticated session created within
-the last 10 minutes at both issuance and completion. Setup confirmation has a
-maximum 10-minute lifetime. An older sign-in requires signing in again and a fresh
-setup request; it cannot be extended by refreshing the page.
-
-The setup proof uses `LINK_IDENTITY` / `EMAIL`, `expected_user_id`, a fresh token,
-browser binding, and a nonce hash binding the exact original authenticated session.
-Only HMAC token/session evidence is stored. The confirmation token stays in the
-URL fragment and protected POST body. Its GET makes no identity changes; its
-isolated page retains the same-origin referrer policy and restrictive CSP.
-
-Completion revalidates all authority and ownership inside the database transaction.
-It may add an EMAIL identity and verified contact only to that authenticated user.
-A foreign EMAIL identity, foreign canonical verified owner, or provider-email
-conflict belonging to another user stops the operation. Inactive EMAIL identities
-are not automatically reactivated. No users, roles, memberships or login sessions
-are created by linking; no identities or email ownership are transferred. Existing
-sign-in methods keep working. Successful completion consumes both challenge and
-transaction, and records `EMAIL_IDENTITY_LINKED` without the raw token or address.
-The service follows the existing transaction convention: callers that supply an
-open transaction must roll it back on any failure.
-
-LINK_IDENTITY proof cannot be used for LOGIN, and LOGIN proof cannot add a method.
-Replacement has a separate flow namespace from ordinary login and invitations.
-Requests share the existing per-mailbox and per-network rate limits; failed mail
-transport invalidates the confirmation. No migration or environment change is
-required. Postmark remains the configured transport.
-
-After setup, ordinary 15-minute EMAIL sign-in links continue to work in the same
-browser or another browser/device. Switching browsers is a compatibility test,
-not a normal sign-in requirement. This setup does not alter the Website-owned
-Challenge invitation or enrollment journey.
+This revision does not attach a new Google subject to an existing EMAIL-only
+account by email matching. That is a separate linking/reconciliation decision;
+the supported Google-first then email path does not need it.
 
 ## Required request acknowledgement
 
-Every ordinary request outcome uses the same message:
+All ordinary request outcomes retain the same message:
+
 “If that email can be used, a FitCrew sign-in link will arrive shortly.”
-It is shown in an Auth-only modal with one explicit “OK, I understand” POST action.
-The server retains the acknowledgement until that CSRF-protected action succeeds.
-There is no Escape, backdrop or timeout dismissal. Keyboard focus starts on the
-button; native dialog semantics provide modality, and the rendered fallback leaves
-the page background inert when JavaScript is unavailable. Browser navigation is
-not intercepted. Reloading while acknowledgement is pending shows it again.
 
-The link-setup request uses the same mechanism with its own generic confirmation
-copy. Delivery success, failure, throttling and account presence are not disclosed
-by either request response. Other notices remain on the existing flash path.
-Presentation lives in `assets/css/auth-email.css` and `assets/js/auth-email.js`,
-loaded by the Auth layout only; shared Website/Admin CSS is not modified.
+The modal requires its acknowledgement button; backdrop clicks and Escape do
+not dismiss it. It has an accessible name/description, initial focus, native
+modal focus containment, a protected POST acknowledgement, and an inert page
+background including the no-JavaScript fallback. The message never reveals
+whether an account exists, an address was admitted, or mail was delivered.
 
-Proof: `email_identity_link_foundation_test.php`,
-`email_identity_link_unit_test.php`, and `email_auth_ack_browser_test.js`, together
-with the existing Auth/invitation regressions. The JavaScript test is a DOM behavior
-harness, not a visual browser rendering proof. Production visual and Postmark
-mailbox proof must follow deployment of these exact files.
+Auth-only styles and behavior remain `assets/css/auth-email.css` and
+`assets/js/auth-email.js`; shared Website styling and provider buttons are not
+changed by this revision.
+
+Proof: `auth_email_account_unit_test.php`,
+`auth_email_account_foundation_test.php`, `email_auth_ack_browser_test.js`, and
+all existing EMAIL, Google, identity, invitation, private-presence, and mail
+transport regressions. No new migration or environment setting is needed.

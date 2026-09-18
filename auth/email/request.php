@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/inc/bootstrap.php';
-require_once fc_path('inc/auth/email_identity_link.php');
+require_once fc_path('inc/auth/email_magic_link.php');
 
 header('Cache-Control: no-store');
 header('Referrer-Policy: no-referrer');

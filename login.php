@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/inc/bootstrap.php';
-require_once __DIR__ . '/inc/auth/email_identity_link.php';
+require_once __DIR__ . '/inc/auth/email_magic_link.php';
 
 if (fc_is_logged_in() && !isset($_SESSION['fitcrew_email_request_ack'])) {
     if (fc_auth_crew_invitation_continuation_session_public_id() !== null) {
@@ -21,7 +21,7 @@ if (fc_is_logged_in() && !isset($_SESSION['fitcrew_email_request_ack'])) {
             fc_flash('error', 'This Crew invitation changed or expired. Open the latest invitation email and try again.');
         }
     }
-    fc_redirect(fc_email_identity_link_after_login('/app.php'));
+    fc_redirect('/app.php');
 }
 
 header('Cache-Control: no-store, private');

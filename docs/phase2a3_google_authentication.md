@@ -17,7 +17,7 @@ https://fitcrewchallenge.com
 - One Tap and automatic sign-in are not enabled.
 - Google returns an ID token for authentication; FitCrew does not request Google API authorization tokens during sign-in.
 - Server verification uses Google's maintained PHP API client.
-- Canonical Google identity is validated issuer + `sub`; provider email is claim evidence only.
+- Canonical Google identity remains validated issuer + `sub`; the narrow verified-mailbox ownership rule below does not change that lookup.
 
 ## FitCrew flow
 
@@ -36,6 +36,34 @@ login page
 → store only its SHA-256 evidence in user_sessions
 → authenticated /app.php
 ```
+
+## Canonical email ownership for ordinary email sign-in
+
+User-directed September 18, 2026 revision: after fresh Google token signature,
+issuer, audience, expiry, nonce and transaction validation, Auth can establish
+canonical VERIFIED ownership on the already resolved/newly admitted Google user
+when `email_verified` is true and either:
+
+- the canonical email domain is exactly `gmail.com`; or
+- the signed token includes a nonempty valid `hd` domain (Workspace).
+
+This follows [Google's server token verification guidance](https://developers.google.com/identity/gsi/web/guides/verify-google-id-token).
+A third-party Google account email without `hd` remains descriptive even with
+`email_verified=true`. Historical SQL claims alone are never promoted. No dot,
+plus-address, or domain-alias rewriting is performed.
+
+Auth first checks existing canonical ownership and EMAIL identity ownership.
+A different owner causes reconciliation; Auth never selects that other user,
+creates a replacement user, merges users, or transfers an identity. An existing
+Google user remains the same issuer/sub user. Establishing canonical ownership
+and the Google session is atomic. Normal new-account admission rules and USER
+role defaults remain in force.
+
+A subsequent completed ordinary email magic link may reuse this canonical
+owner and create its internal EMAIL identity on first use. The user's account,
+data and roles remain the same; no Add sign-in method setup is required. See
+`email_magic_link_v1.md`. New Google identities are not automatically attached
+to existing EMAIL-only accounts by email matching.
 
 ## Stale transaction refresh
 

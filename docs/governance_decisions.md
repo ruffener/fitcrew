@@ -30,11 +30,27 @@ This file is a concise current-state summary. Historical decisions that have bee
 | Apple Authentication provider readiness | NEXT AUTH PRIORITY / AUTHORIZED |
 | Apple Authentication implementation | Phase 2A5 — NOT YET AUTHORIZED |
 | Authentication identity | Separate from health authorization |
-| Matching email | Never automatic account-linking or merge truth |
+| Matching email | Descriptive email equality never selects, merges or transfers a user; completed EMAIL LOGIN may use the unique canonical VERIFIED owner |
 | Canonical verified email | One canonical verified email = one FitCrew user; database enforced |
 | Explicit identity linking | Authenticated user + fresh/recent auth + `LINK_IDENTITY`; no transfer from another user |
 | Stale Google LOGIN transaction | Retire and replace with fresh state/nonce; require a new click; preserve only freshly valid invitation authority |
 | Canonical platform roles | `USER`, `PLATFORM_ADMIN`, `PLATFORM_SUPER_ADMIN` |
+
+### September 18, 2026 user-directed Google/email access clarification
+
+The user rejected separate Add sign-in method setup and authorized continuation
+of the Google-first → ordinary email sign-in experience on one account. Fresh
+validated authoritative Google mailbox evidence can establish canonical verified
+ownership on its issuer/sub user. A later completed EMAIL LOGIN proof can reuse
+that owner and establish its EMAIL identity in the same transaction. This is a
+narrow revision to the prior setup-only EMAIL linking requirement, not a general
+permission to merge accounts or trust descriptive provider email.
+
+Other explicit provider-identity linking retains the authenticated-user,
+LINK_IDENTITY and no-transfer contract. Conflicting existing ownership still
+stops for reconciliation. Current details and proofs are recorded in
+`email_magic_link_v1.md` and `phase2a3_google_authentication.md`. These implementation
+notes do not assert production browser acceptance before that proof is returned.
 
 ## Health Data
 

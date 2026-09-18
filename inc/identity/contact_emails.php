@@ -132,3 +132,68 @@ function fc_contact_email_set_primary(PDO $pdo, int $userId, int $contactEmailId
         throw $error;
     }
 }
+
+function fc_contact_email_ensure_verified(PDO $pdo, int $userId, string $emailSubject, string $source): void
+{
+    if (!$pdo->inTransaction()) {
+        throw new LogicException('Verified email contact reconciliation requires an active transaction.');
+    }
+
+    $emailSubject = fc_contact_email_canonicalize($emailSubject);
+    $source = strtoupper(trim($source));
+    if ($source === '') {
+        throw new InvalidArgumentException('Verified email source is required.');
+    }
+
+    $owner = fc_contact_email_find_verified_owner($pdo, $emailSubject, true);
+    if ($owner !== null && (int) $owner['user_id'] !== $userId) {
+        throw new DomainException('account_reconciliation_required');
+    }
+
+    $find = $pdo->prepare(
+        'SELECT id, verification_status FROM user_contact_emails ' .
+        'WHERE user_id = :user_id AND email_canonical = :email AND removed_at IS NULL LIMIT 1 FOR UPDATE'
+    );
+    $find->execute([':user_id' => $userId, ':email' => $emailSubject]);
+    $existing = $find->fetch(PDO::FETCH_ASSOC);
+    $now = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:s.u');
+    if ($existing !== false) {
+        $update = $pdo->prepare(
+            'UPDATE user_contact_emails ' .
+            'SET verification_status = \'VERIFIED\', verified_at = :verified_at, ' .
+            '    verified_email_canonical = :email, source_key = :source ' .
+            'WHERE id = :id AND user_id = :user_id'
+        );
+        try {
+            $update->execute([
+                ':verified_at' => $now,
+                ':source' => $source,
+                ':email' => $emailSubject,
+                ':id' => (int) $existing['id'],
+                ':user_id' => $userId,
+            ]);
+        } catch (PDOException $error) {
+            if ((string) $error->getCode() === '23000' && (int) ($error->errorInfo[1] ?? 0) === 1062) {
+                throw new DomainException('canonical_verified_email_conflict', 0, $error);
+            }
+            throw $error;
+        }
+        return;
+    }
+
+    $primary = $pdo->prepare(
+        'SELECT id FROM user_contact_emails ' .
+        'WHERE user_id = :user_id AND removed_at IS NULL AND is_primary_for_contact = 1 ' .
+        'LIMIT 1 FOR UPDATE'
+    );
+    $primary->execute([':user_id' => $userId]);
+    fc_contact_email_create(
+        $pdo,
+        $userId,
+        $emailSubject,
+        $source,
+        $primary->fetchColumn() === false,
+        'VERIFIED',
+        $now
+    );
+}

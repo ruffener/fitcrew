@@ -263,7 +263,7 @@ try {
     fwrite(STDOUT, "- fragment token excluded from GET/access logs: PASS\n");
     fwrite(STDOUT, "- no third-party token-page resources: PASS\n");
     fwrite(STDOUT, "- existing fc_mail_send transport / canonical subject: PASS\n");
-    fwrite(STDOUT, "- EMAIL identity isolation / explicit-linking boundary: PASS\n");
+    fwrite(STDOUT, "- EMAIL identity isolation / canonical verified-owner boundary: PASS\n");
     fwrite(STDOUT, "- canonical verified-email conflict detection / no automatic merge: PASS\n");
     fwrite(STDOUT, "- invitation admission before account creation: PASS\n");
     fwrite(STDOUT, "- exact invitation binding / explicit provider replacement: PASS\n");

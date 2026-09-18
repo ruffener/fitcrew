@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/inc/bootstrap.php';
-require_once fc_path('inc/auth/email_identity_link.php');
+require_once fc_path('inc/auth/email_magic_link.php');
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -118,7 +118,7 @@ try {
 
     fc_google_json_response(200, [
         'ok' => true,
-        'redirect' => fc_email_identity_link_after_login((string) $result['destination']),
+        'redirect' => (string) $result['destination'],
         'new_account' => (bool) $result['new_account'],
     ]);
 } catch (DomainException $e) {
@@ -130,6 +130,7 @@ try {
         'invitation_continuation_product_invalid',
         'invitation_continuation_already_used' => 'invitation_failed',
         'fitcrew_account_access_denied' => 'account_denied',
+        'account_reconciliation_required', 'canonical_verified_email_conflict' => 'account_reconciliation_required',
         'google_nonce_invalid' => 'nonce_failed',
         'auth_transaction_invalid', 'auth_transaction_already_consumed' => 'transaction_failed',
         default => 'credential_failed',
@@ -147,6 +148,9 @@ try {
             ? 'FitCrew Challenge account access is unavailable.'
             : 'Google sign-in could not be completed. Please try again.'));
 
+    if ($reason === 'account_reconciliation_required') {
+        $message = 'This email conflicts with another FitCrew account. Contact support to reconcile it. No account was changed.';
+    }
     fc_google_json_response(403, ['ok' => false, 'message' => $message]);
 } catch (Throwable $e) {
     fc_log('error', 'Google authentication failed unexpectedly.', [

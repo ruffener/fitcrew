@@ -10,9 +10,6 @@ $emailCsrfToken = (string) ($emailAuthConfig['csrf_token'] ?? fc_csrf_token());
     <span class="status-chip status-chip-neutral"><span aria-hidden="true">○</span> Provider authentication</span>
     <p class="eyebrow">Account access</p>
     <h1><?= $isCreateIntent ? 'Create your FitCrew Challenge account.' : 'Continue to FitCrew Challenge.' ?></h1>
-    <?php if (($_SESSION['fitcrew_email_link_setup_until'] ?? 0) > time()): ?>
-        <p class="auth-email-notice" role="status">First sign in using a method you already use for FitCrew. Then you can add email sign-in to that same account.</p>
-    <?php endif; ?>
     <p class="auth-intro">
         FitCrew Challenge uses provider-based sign-in—no FitCrew password required.
         Authentication and health-data permissions remain separate.
@@ -97,7 +94,6 @@ $emailCsrfToken = (string) ($emailAuthConfig['csrf_token'] ?? fc_csrf_token());
         <?php endif; ?>
     </div>
 
-    <p class="auth-email-setup-link"><a href="/auth/email/link.php">Add email sign-in to your existing account</a></p>
 
     <div class="account-entry-note">
         <strong>Identity and health data stay separate.</strong>

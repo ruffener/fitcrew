@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/inc/bootstrap.php';
-require_once fc_path('inc/auth/email_identity_link.php');
+require_once fc_path('inc/auth/email_magic_link.php');
 
 header('Cache-Control: no-store, private');
 header('Pragma: no-cache');
@@ -16,7 +16,7 @@ function fc_email_magic_link_complete_rejection(string $reason): never
     } catch (Throwable) {
     }
     $message = $reason === 'account_reconciliation_required'
-        ? 'FitCrew could not safely use this email link. Sign in with your existing method, then choose Add email sign-in. No account was changed.'
+        ? 'FitCrew could not safely match this email to one account. Sign in with your existing provider and try again. If this continues, contact support. No account was changed.'
         : 'This email sign-in link is invalid, expired, replaced, or already used.';
     fc_flash('error', $message);
     fc_redirect('/login.php');
@@ -69,7 +69,7 @@ try {
         $networkEvidence
     );
     fc_email_magic_link_apply_committed_arrival_context($result);
-    fc_redirect(fc_email_identity_link_after_login((string) $result['destination']));
+    fc_redirect((string) $result['destination']);
 } catch (DomainException $error) {
     $reason = match ($error->getMessage()) {
         'fitcrew_account_access_denied' => 'account_denied',
