@@ -1628,6 +1628,18 @@ textarea:disabled {
     line-height: 1.45;
 }
 
+.google-provider-shell .provider-help {
+    margin-top: 0.75rem;
+    padding: 0.75rem 0.875rem;
+    border-left: 3px solid var(--fc-royal-blue);
+    border-radius: var(--radius-sm);
+    background: var(--fc-surface-blue);
+    color: var(--fc-text);
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.5;
+}
+
 .provider-help.is-error {
     color: var(--fc-danger);
     font-weight: 700;
