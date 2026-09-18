@@ -125,8 +125,8 @@ foreach (['overview-grid overview-grid-three', 'Competition truth', 'Official an
 }
 
 $contextSource = file_get_contents($root . '/inc/product/context.php') ?: '';
-if (!str_contains($contextSource, 'fc_product_context_persist($pdo, $userId, $crewId, null)')) {
-    throw new RuntimeException('Selecting a Crew must clear Challenge selection until the user explicitly opens a Challenge.');
+if (!str_contains($contextSource, 'fc_product_context_single_current_challenge')) {
+    throw new RuntimeException('Crew context must resolve its sole accessible current Challenge.');
 }
 
 $js = file_get_contents($root . '/assets/js/app.js') ?: '';

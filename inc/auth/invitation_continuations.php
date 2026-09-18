@@ -724,3 +724,62 @@ function fc_auth_crew_invitation_continuation_consume(
     // left untouched until a later request observes committed terminal state.
     return $statement->rowCount() === 1;
 }
+
+/**
+ * Prepare a fresh, unauthenticated continuation for an explicit account switch.
+ * Caller commits before replacing PHP session state. Product invitation and
+ * admission claims are untouched; expiry is never extended by switching.
+ * @return array{public_id:string}
+ */
+function fc_auth_crew_invitation_prepare_account_switch(PDO $pdo, string $newBrowserBinding): array
+{
+    if (!$pdo->inTransaction()) {
+        throw new LogicException('Invitation account switching requires a transaction.');
+    }
+    if (strlen($newBrowserBinding) < 32 || hash_equals(fc_auth_browser_binding(), $newBrowserBinding)) {
+        throw new InvalidArgumentException('A fresh browser binding is required.');
+    }
+    $currentUser = fc_current_user();
+    $current = fc_auth_crew_invitation_continuation_current_internal($pdo, false);
+    if ($currentUser === null || $current === null) {
+        throw new DomainException('invitation_continuation_invalid');
+    }
+    // Match acceptance's lock order: current product invitation, then Auth row.
+    $snapshot = fc_auth_crew_invitation_product_snapshot(
+        $pdo, (string) $current['invitation_public_id'], (int) $current['invitation_generation'], true
+    );
+    if ($snapshot === null) throw new DomainException('invitation_continuation_product_invalid');
+    $current = fc_auth_crew_invitation_continuation_current_internal($pdo, true);
+    if ($current === null) throw new DomainException('invitation_continuation_invalid');
+    $active = fc_session_record_resolve_active($pdo, session_id(), fc_session_timeout_policy()['idle_seconds']);
+    if ($active === null || (int) $active['session_record_id'] !== (int) $current['authenticated_session_id']
+        || (int) $active['user_id'] !== (int) $current['authenticated_user_id']) {
+        throw new DomainException('invitation_continuation_invalid');
+    }
+    $retire = $pdo->prepare(
+        'UPDATE auth_invitation_continuations SET continuation_status = \'CONSUMED\', consumed_at = CURRENT_TIMESTAMP(6) ' .
+        'WHERE public_id = :public_id AND continuation_status = \'AUTHENTICATED\' AND consumed_at IS NULL'
+    );
+    $retire->execute([':public_id' => $current['public_id']]);
+    if ($retire->rowCount() !== 1 || !fc_session_revoke($pdo, session_id(), 'invitation_account_switch')) {
+        throw new DomainException('invitation_continuation_invalid');
+    }
+    $publicId = fc_new_public_id();
+    $expiresAt = min((string) $current['expires_at'], (string) $snapshot['expires_at']);
+    $insert = $pdo->prepare(
+        'INSERT INTO auth_invitation_continuations ' .
+        '(public_id,purpose,invitation_public_id,invitation_generation,browser_session_binding_hash,expires_at) ' .
+        'VALUES (:public_id,:purpose,:invitation,:generation,:browser_hash,:expires_at)'
+    );
+    $insert->execute([
+        ':public_id' => $publicId, ':purpose' => FC_AUTH_CREW_INVITATION_PURPOSE,
+        ':invitation' => $current['invitation_public_id'], ':generation' => (int) $current['invitation_generation'],
+        ':browser_hash' => fc_secret_evidence_hash($newBrowserBinding), ':expires_at' => $expiresAt,
+    ]);
+    fc_audit_event_write($pdo, [
+        'actor_user_id' => (int) $currentUser['user_id'], 'event_type' => 'SESSION_REVOKED_LOGOUT',
+        'target_type' => 'SESSION', 'target_id' => (string) $currentUser['session_record_id'], 'outcome' => 'SUCCESS',
+        'metadata' => ['provider' => (string) $currentUser['provider_key'], 'reason' => 'invitation_account_switch'],
+    ]);
+    return ['public_id' => $publicId];
+}

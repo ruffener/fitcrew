@@ -22,7 +22,7 @@ p3_assert(str_contains($landing, "fc_redirect((string) \$authContinuation['next_
 p3_assert(str_contains($landing, 'fc_auth_crew_invitation_continuation_current($pdo)'), 'Clean invitation page must read current Auth continuation.');
 p3_assert(str_contains($landing, 'fc_crew_invitation_accept_continuation('), 'Runtime acceptance must use continuation acceptance.');
 p3_assert(!str_contains($view, 'name="token"'), 'Acceptance form must not carry the raw invitation token.');
-p3_assert(!str_contains($view, 'invited_email'), 'Clean invitation view must not compare or expose invitation email as identity.');
+p3_assert(str_contains($view, 'This invitation was sent to') && str_contains($view, '$accountLabel'), 'Invitation destination and signed-in account must be separately identified.');
 p3_assert(str_contains($view, 'You’re signed in as'), 'Clean invitation page must show signed-in FitCrew account context.');
 p3_assert(str_contains($view, 'Accept as'), 'Explicit acceptance must remain required.');
 

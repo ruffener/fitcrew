@@ -32,6 +32,10 @@ function fc_product_context(PDO $pdo, int $userId): array
         }
     }
 
+    if ($challenge === null) {
+        $challenge = fc_product_context_single_current_challenge($challenges, $userId);
+    }
+
     $resolvedCrewId = $crew !== null ? (int) $crew['id'] : null;
     $resolvedChallengeId = $challenge !== null ? (int) $challenge['id'] : null;
     if ($stored === null || $storedCrewId !== $resolvedCrewId || $storedChallengeId !== $resolvedChallengeId) {
@@ -59,9 +63,12 @@ function fc_product_context_persist(PDO $pdo, int $userId, ?int $crewId, ?int $c
 function fc_product_context_select_crew(PDO $pdo, int $userId, int $crewId): void
 {
     fc_crew_require_member($pdo, $userId, $crewId);
-    // Selecting a Crew chooses the Crew only. A Challenge remains unselected until
-    // the user explicitly opens one from Overview, Crew, or the Challenge list.
-    fc_product_context_persist($pdo, $userId, $crewId, null);
+    $current = fc_product_context($pdo, $userId);
+    if ($current['crew'] !== null && (int) $current['crew']['id'] === $crewId) return;
+    $challenge = fc_product_context_single_current_challenge(
+        fc_challenges_for_user($pdo, $userId, $crewId, true), $userId
+    );
+    fc_product_context_persist($pdo, $userId, $crewId, $challenge !== null ? (int) $challenge['id'] : null);
 }
 
 function fc_product_context_select_challenge(PDO $pdo, int $userId, int $challengeId): void
@@ -88,4 +95,15 @@ function fc_product_context_handle_selection(PDO $pdo, int $userId, array $sourc
     }
 
     return false;
+}
+
+/** Select only an unambiguous current Challenge already accessible to this user. */
+function fc_product_context_single_current_challenge(array $challenges, int $userId): ?array
+{
+    $current = array_values(array_filter($challenges, static fn(array $challenge): bool =>
+        empty($challenge['archived_at']) && empty($challenge['deleted_at']) && empty($challenge['effective_end_at'])
+        && (string) $challenge['lifecycle_status'] !== 'COMPLETED'
+        && ((int) $challenge['owner_user_id'] === $userId || (string) ($challenge['participation_status'] ?? '') === 'ACTIVE')
+    ));
+    return count($current) === 1 ? $current[0] : null;
 }

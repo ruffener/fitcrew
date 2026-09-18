@@ -73,6 +73,7 @@ $crew = $appContext['crew'];
 $memberships = $crew !== null ? fc_crew_memberships($pdo, $userId, (int) $crew['id']) : [];
 $pendingInvitations = $crew !== null && (string)$crew['membership_role'] === 'OWNER' ? fc_crew_invitations_pending($pdo, $userId, (int)$crew['id']) : [];
 $crewChallenges = $crew !== null ? fc_challenge_summaries_for_crew($pdo, $userId, (int) $crew['id']) : [];
+$signedInEmail = fc_current_account_email($pdo);
 $appSection = 'crew';
 $title = 'Crew';
 $contentView = 'views/app/crew/home.php';

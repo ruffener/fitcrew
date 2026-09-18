@@ -44,3 +44,19 @@ function fc_require_login(): void
     fc_flash('notice', 'Please sign in to continue to FitCrew Challenge.');
     fc_redirect('/login.php');
 }
+
+/** Self-only presentation; never use this label as authentication authority. */
+function fc_current_account_email(PDO $pdo): ?string
+{
+    $current = fc_current_user();
+    if ($current === null) return null;
+    $query = $pdo->prepare(
+        'SELECT email_canonical FROM user_contact_emails ' .
+        'WHERE user_id = :user_id AND verification_status = \'VERIFIED\' ' .
+        'AND removed_at IS NULL AND verified_email_canonical = email_canonical ' .
+        'ORDER BY is_primary_for_contact DESC, id ASC LIMIT 1'
+    );
+    $query->execute([':user_id' => (int) $current['user_id']]);
+    $email = $query->fetchColumn();
+    return $email === false ? null : (string) $email;
+}

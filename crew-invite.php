@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/inc/bootstrap.php';
 require_once __DIR__ . '/inc/product/bootstrap.php';
 
+header('Cache-Control: no-store, private');
 $pdo = fc_db();
 $rawToken = trim((string) ($_GET['token'] ?? ''));
 
@@ -111,6 +112,7 @@ $continuation = fc_is_logged_in()
 $invitation = null;
 $signedInUser = null;
 $alreadyMember = false;
+$signedInEmail = fc_current_account_email($pdo);
 
 if ($continuation !== null) {
     $currentUser = fc_current_user();

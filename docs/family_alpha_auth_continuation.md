@@ -247,3 +247,45 @@ php tests/phase2a4_microsoft_auth_foundation_test.php
 
 git diff --check
 ```
+
+## Explicit invitation account choice — September 18 correction
+
+The Product Owner requested visible signed-in email, an invitation-preserving
+account switch, an inactive Accept button for existing members, and restoration
+of the sole accessible Challenge when Crew navigation cleared context.
+
+- The clean invitation page displays the current user's canonical verified
+  contact email separately from the invitation delivery address. A verified
+  contact is presentation here, never a replacement for the authenticated user.
+  No provider claim or invitation address is used to invent an account label.
+- `auth/invitation/switch-account.php` is POST-only and checks Origin and CSRF.
+  Auth revalidates the exact pending invitation/generation and current session,
+  retires the authenticated continuation, revokes that session, and creates a
+  fresh ISSUED continuation with a new browser binding and no extended expiry.
+  SQL commits before PHP session ID rotation and minimal session replacement.
+  Neither the old user nor old provider state authorizes the next login.
+- Auth receives no invitation delivery address, raw invitation token, membership
+  instruction or arbitrary return URL. A new login is required; the fixed return
+  is still `/crew-invite.php`. Product invitation and new-account admission claims
+  are untouched by switching. Cancellation, resend, expiry and replay fail closed.
+- Existing active Crew members cannot accept another invitation to that Crew.
+  The disabled form is backed by a locked server-side guard before invitation or
+  continuation consumption. Owner role and the pending invitation are preserved.
+  This supersedes the former existing-member acceptance that closed the invite.
+- Crew shows the current account's own verified email. Other members' contact
+  emails are not added to the roster.
+- Selecting the same Crew preserves its selected Challenge. Empty context may
+  resolve exactly one current Challenge already accessible as Owner or active
+  participant. Ambiguous choices, completed/ended/archived/deleted Challenges,
+  and missing participation are not treated as automatic enrollment.
+
+This correction does not implement the separate Challenge-specific invitation
+redesign. The current `crew_invitations` schema has no Challenge binding, and new
+Challenge participation still requires the existing published-rule acceptance.
+The reported Owner already participated in Fall 2027; that case was a context
+clearing defect, not missing participation. Previously consumed invitations are
+not reopened by this patch; use a new invitation for the account-switch proof.
+
+Proof: `invitation_account_context_foundation_test.php`, updated PASS 3 acceptance
+proofs and Wave 1 context proofs, plus existing Auth continuation and EMAIL
+regressions. No schema migration, transport configuration or `.env` edit.

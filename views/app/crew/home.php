@@ -1,4 +1,5 @@
 <?php if ($crew === null): ?>
+<p class="form-help">Signed in as <strong><?= fc_e((string) $currentUser['display_name']) ?></strong><?= $signedInEmail !== null ? ' (' . fc_e($signedInEmail) . ')' : ' — no verified email' ?>.</p>
 <section class="product-hero">
     <div>
         <p class="eyebrow">Crew</p>
@@ -61,7 +62,7 @@
         <?php $canRemoveMember = (string) $crew['membership_role'] === 'OWNER' && (string) $member['role_code'] !== 'OWNER' && (string) $member['membership_status'] === 'ACTIVE'; ?>
         <article class="member-card<?= (string) $member['membership_status'] !== 'ACTIVE' ? ' is-muted' : '' ?>">
             <div class="avatar-badge" aria-hidden="true"><?= fc_e(strtoupper(substr(trim((string) ($member['display_name'] ?: 'F')), 0, 1))) ?></div>
-            <div class="member-card-copy"><strong><?= fc_e((string) ($member['display_name'] ?: 'FitCrew member')) ?></strong><span><?= fc_e(ucfirst(strtolower((string) $member['role_code']))) ?> · <?= fc_e(ucfirst(strtolower((string) $member['membership_status']))) ?></span></div>
+            <div class="member-card-copy"><strong><?= fc_e((string) ($member['display_name'] ?: 'FitCrew member')) ?></strong><?php if ((int) $member['user_id'] === (int) $currentUser['user_id'] && $signedInEmail !== null): ?><span><?= fc_e($signedInEmail) ?></span><?php endif; ?><span><?= fc_e(ucfirst(strtolower((string) $member['role_code']))) ?> · <?= fc_e(ucfirst(strtolower((string) $member['membership_status']))) ?></span></div>
             <?php if ($canRemoveMember): ?>
                 <button class="member-remove-button" type="button" data-modal-open="remove-member-<?= fc_e((string) $member['user_public_id']) ?>">Remove</button>
             <?php endif; ?>

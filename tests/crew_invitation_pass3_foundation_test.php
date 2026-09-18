@@ -175,14 +175,18 @@ try {
     $beforeCount->execute([':c'=>$crew['id'],':u'=>$owner['id']]);
     $countBefore=(int)$beforeCount->fetchColumn();
 
-    $acceptedCrewId = fc_crew_invitation_accept_continuation(
-        $pdo,
-        (int)$owner['id'],
-        (string)$ownerInvite['public_id'],
-        0,
-        static fn(PDO $db, string $publicId, int $generation): bool => true
-    );
-    p3db_assert($acceptedCrewId === (int)$crew['id'], 'Already-member acceptance returned wrong Crew.');
+    $consumeCalls = 0;
+    p3db_denied(function() use ($pdo, $owner, $ownerInvite, &$consumeCalls): void {
+        fc_crew_invitation_accept_continuation(
+            $pdo, (int)$owner['id'], (string)$ownerInvite['public_id'], 0,
+            static function(PDO $db, string $publicId, int $generation) use (&$consumeCalls): bool { $consumeCalls++; return true; }
+        );
+    }, 'Existing Owner acceptance');
+    p3db_assert($consumeCalls === 0, 'Existing-member denial must not consume continuation.');
+    $pending = $pdo->prepare('SELECT invitation_status,accepted_by_user_id FROM crew_invitations WHERE public_id=?');
+    $pending->execute([$ownerInvite['public_id']]);
+    $pendingRow = $pending->fetch(PDO::FETCH_ASSOC);
+    p3db_assert($pendingRow['invitation_status'] === 'PENDING' && $pendingRow['accepted_by_user_id'] === null, 'Existing-member attempt consumed invitation.');
     $beforeCount->execute([':c'=>$crew['id'],':u'=>$owner['id']]);
     p3db_assert((int)$beforeCount->fetchColumn() === $countBefore, 'Already-member acceptance created duplicate membership.');
     $role = $pdo->prepare('SELECT role_code FROM crew_memberships WHERE crew_id=:c AND user_id=:u');
@@ -217,7 +221,7 @@ try {
     fwrite(STDOUT, "- Accepted/failed/resend transport truth: PASS\n");
     fwrite(STDOUT, "- Stale/cancelled/expired final validation: PASS\n");
     fwrite(STDOUT, "- Consume-failure rollback / no premature consume: PASS\n");
-    fwrite(STDOUT, "- Already-member idempotence / Owner preservation: PASS\n");
+    fwrite(STDOUT, "- Already-member rejection / pending invitation / Owner preservation: PASS\n");
     fwrite(STDOUT, "- Issue/resend/invalid-token rate limits: PASS\n");
     fwrite(STDOUT, "- Test data rolled back: PASS\n");
 } catch (Throwable $error) {

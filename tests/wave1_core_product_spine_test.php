@@ -158,7 +158,7 @@ try {
 
     fc_product_context_select_crew($pdo, $member['id'], $crew['id']);
     $crewOnlyContext = fc_product_context($pdo, $member['id']);
-    wave1_assert($crewOnlyContext['challenge'] === null, 'Selecting a Crew must not silently select a Challenge.');
+    wave1_assert((int) ($crewOnlyContext['challenge']['id'] ?? 0) === (int) $challenge['id'], 'Selecting a Crew must resolve its sole accessible current Challenge.');
     fc_product_context_select_challenge($pdo, $member['id'], $challenge['id']);
     $context = fc_product_context($pdo, $member['id']);
     wave1_assert((int) $context['crew']['id'] === $crew['id'], 'Selected Crew context must persist.');

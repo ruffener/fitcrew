@@ -315,8 +315,8 @@ function fc_crew_invitation_continuation_display(
     }
 
     $query = $pdo->prepare(
-        'SELECT i.public_id, i.crew_id, i.resend_count, i.expires_at, ' .
-        'c.display_name AS crew_name, u.display_name AS inviter_name, ' .
+        'SELECT i.public_id, i.crew_id, i.resend_count, i.expires_at, i.invited_email, ' .
+        'c.public_id AS crew_public_id, c.display_name AS crew_name, u.display_name AS inviter_name, ' .
         'm.role_code AS existing_role, m.membership_status AS existing_membership_status ' .
         'FROM crew_invitations i ' .
         'JOIN crews c ON c.id=i.crew_id ' .
@@ -386,6 +386,9 @@ function fc_crew_invitation_accept_continuation(
     );
     $membership->execute([':c'=>$crewId,':u'=>$actorUserId]);
     $existing=$membership->fetch(PDO::FETCH_ASSOC);
+    if ($existing !== false && (string) $existing['membership_status'] === 'ACTIVE') {
+        throw new DomainException('This account is already in the Crew. Switch accounts to use this invitation.');
+    }
 
     if ($existing === false) {
         $pdo->prepare(
