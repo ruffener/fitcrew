@@ -1,10 +1,20 @@
 <?php /** @var string $title */ /** @var string $contentView */ ?>
+<?php
+$emailAckMode = $_SESSION['fitcrew_email_request_ack'] ?? null;
+$emailAckPending = in_array($emailAckMode, ['signin', 'link'], true);
+$emailAssetVersion = (string) max(
+    filemtime(fc_path('assets/css/auth-email.css')),
+    filemtime(fc_path('assets/js/auth-email.js'))
+);
+?>
 <!doctype html>
 <html lang="en">
 <head>
     <?php require fc_path('views/partials/head.php'); ?>
+    <link rel="stylesheet" href="/assets/css/auth-email.css?v=<?= fc_e($emailAssetVersion) ?>">
 </head>
 <body class="auth-body">
+    <div<?= $emailAckPending ? ' inert' : '' ?>>
     <?php $headerVariant = 'public'; require fc_path('views/partials/header.php'); ?>
     <main class="auth-shell">
         <?php require fc_path('views/partials/flash.php'); ?>
@@ -24,6 +34,9 @@
         </div>
     </main>
     <?php require fc_path('views/partials/footer.php'); ?>
+    </div>
+    <?php if ($emailAckPending) require fc_path('views/auth/email_request_ack.php'); ?>
+    <script src="/assets/js/auth-email.js?v=<?= fc_e($emailAssetVersion) ?>" defer></script>
     <script src="/assets/js/app.js?v=<?= fc_e((string) $fitcrewAssetVersion) ?>" defer></script>
     <?php if (!empty($googleAuthConfig['enabled'])): ?>
         <script src="https://accounts.google.com/gsi/client" async></script>

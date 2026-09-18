@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/inc/bootstrap.php';
+require_once fc_path('inc/auth/email_identity_link.php');
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -117,7 +118,7 @@ try {
 
     fc_google_json_response(200, [
         'ok' => true,
-        'redirect' => $result['destination'],
+        'redirect' => fc_email_identity_link_after_login((string) $result['destination']),
         'new_account' => (bool) $result['new_account'],
     ]);
 } catch (DomainException $e) {

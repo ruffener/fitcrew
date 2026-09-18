@@ -1,0 +1,15 @@
+/* Auth-only email setup and required acknowledgement. Shared product CSS is unchanged. */
+.auth-email-setup h1 { font-size: clamp(1.75rem, 4vw, 2.5rem); line-height: 1.15; }
+.auth-email-setup p, .auth-email-setup label, .auth-email-setup input,
+.auth-email-setup button, .auth-email-setup-link, .auth-email-notice { font-size: 1rem; line-height: 1.5; }
+.auth-email-setup input, .auth-email-setup button { min-height: 44px; }
+.auth-email-setup-link { margin: 1rem 0; }
+.auth-email-notice { padding: 1rem; background: #edf2ff; border-left: 3px solid #2149bc; }
+.auth-email-ack-shade { position: fixed; inset: 0; z-index: 10000; background: rgba(8, 20, 47, .65); }
+.auth-email-ack { position: fixed; inset: 0; margin: auto; height: fit-content; width: min(32rem, calc(100% - 2rem)); max-height: calc(100dvh - 2rem); overflow: auto; box-sizing: border-box; padding: clamp(1.25rem, 4vw, 2rem); border: 1px solid #bac6df; border-radius: 1rem; background: white; color: #102044; z-index: 10001; box-shadow: 0 1.5rem 4rem rgba(8,20,47,.25); }
+.auth-email-ack::backdrop { background: rgba(8, 20, 47, .65); }
+.auth-email-ack h2 { margin: 0 0 1rem; font: 700 1.5rem/1.25 Arial, sans-serif; }
+.auth-email-ack p { font-size: 1rem; line-height: 1.6; margin: 0 0 1rem; color: #304363; }
+.auth-email-ack button { width: 100%; min-height: 48px; font-size: 1rem; line-height: 1.5; white-space: normal; }
+.auth-email-ack button:focus-visible, .auth-email-setup :is(a, button, input):focus-visible,
+.auth-email-setup-link a:focus-visible { outline: 3px solid #123bad; outline-offset: 4px; }

@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/inc/bootstrap.php';
-require_once fc_path('inc/auth/email_magic_link.php');
+require_once fc_path('inc/auth/email_identity_link.php');
 
 header('Cache-Control: no-store');
 header('Referrer-Policy: no-referrer');
@@ -18,7 +18,7 @@ if (!fc_email_magic_link_request_origin_valid($_SERVER['HTTP_ORIGIN'] ?? null)) 
         fc_email_magic_link_audit_rejection(fc_db(), 'origin_failed');
     } catch (Throwable) {
     }
-    fc_flash('notice', FC_EMAIL_MAGIC_LINK_REQUEST_MESSAGE);
+    fc_email_request_require_acknowledgement();
     fc_redirect('/login.php');
 }
 
@@ -27,7 +27,7 @@ if (!fc_validate_csrf($_POST['csrf_token'] ?? null)) {
         fc_email_magic_link_audit_rejection(fc_db(), 'csrf_failed');
     } catch (Throwable) {
     }
-    fc_flash('notice', FC_EMAIL_MAGIC_LINK_REQUEST_MESSAGE);
+    fc_email_request_require_acknowledgement();
     fc_redirect('/login.php');
 }
 
@@ -45,5 +45,5 @@ try {
 
 // Enumeration resistance: every syntactically valid request path returns the
 // same message regardless of identity existence, admission, rate limit, or mail result.
-fc_flash('notice', FC_EMAIL_MAGIC_LINK_REQUEST_MESSAGE);
+fc_email_request_require_acknowledgement();
 fc_redirect('/login.php');

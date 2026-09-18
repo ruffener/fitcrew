@@ -153,3 +153,75 @@ Unit checks guard the header/form contract and existing origin/CSRF rejection.
 They do not replace this real browser proof. If the origin is now canonical but
 completion still fails, inspect the newest rejection reason; do not weaken the
 origin or CSRF checks, and do not attribute every generic rejection to expiry.
+
+## Explicitly add email sign-in to an existing account
+
+A provider's descriptive email is reconciliation evidence, not an EMAIL sign-in
+identity or canonical verified-email ownership. An ordinary email LOGIN must not
+silently select a Google/Microsoft user by matching that claim. A provider-only
+account therefore needs an explicit Add email sign-in setup once.
+
+Auth exposes `/auth/email/link.php`, linked from the login screen. Signed-out users
+first authenticate with their existing method; a short-lived session preference
+returns ordinary APP_HOME authentication to this fixed setup route. Invitation
+returns keep priority and are never rewritten. This preference conveys no linking
+authority. A signed-in user can visit the setup route directly.
+
+The user explicitly requests adding an address, receives a Postmark confirmation
+through the existing mail transport, opens it in the same initiating signed-in
+browser, and confirms Add email sign-in. The server requires an active account,
+active existing sign-in identity, and original authenticated session created within
+the last 10 minutes at both issuance and completion. Setup confirmation has a
+maximum 10-minute lifetime. An older sign-in requires signing in again and a fresh
+setup request; it cannot be extended by refreshing the page.
+
+The setup proof uses `LINK_IDENTITY` / `EMAIL`, `expected_user_id`, a fresh token,
+browser binding, and a nonce hash binding the exact original authenticated session.
+Only HMAC token/session evidence is stored. The confirmation token stays in the
+URL fragment and protected POST body. Its GET makes no identity changes; its
+isolated page retains the same-origin referrer policy and restrictive CSP.
+
+Completion revalidates all authority and ownership inside the database transaction.
+It may add an EMAIL identity and verified contact only to that authenticated user.
+A foreign EMAIL identity, foreign canonical verified owner, or provider-email
+conflict belonging to another user stops the operation. Inactive EMAIL identities
+are not automatically reactivated. No users, roles, memberships or login sessions
+are created by linking; no identities or email ownership are transferred. Existing
+sign-in methods keep working. Successful completion consumes both challenge and
+transaction, and records `EMAIL_IDENTITY_LINKED` without the raw token or address.
+The service follows the existing transaction convention: callers that supply an
+open transaction must roll it back on any failure.
+
+LINK_IDENTITY proof cannot be used for LOGIN, and LOGIN proof cannot add a method.
+Replacement has a separate flow namespace from ordinary login and invitations.
+Requests share the existing per-mailbox and per-network rate limits; failed mail
+transport invalidates the confirmation. No migration or environment change is
+required. Postmark remains the configured transport.
+
+After setup, ordinary 15-minute EMAIL sign-in links continue to work in the same
+browser or another browser/device. Switching browsers is a compatibility test,
+not a normal sign-in requirement. This setup does not alter the Website-owned
+Challenge invitation or enrollment journey.
+
+## Required request acknowledgement
+
+Every ordinary request outcome uses the same message:
+“If that email can be used, a FitCrew sign-in link will arrive shortly.”
+It is shown in an Auth-only modal with one explicit “OK, I understand” POST action.
+The server retains the acknowledgement until that CSRF-protected action succeeds.
+There is no Escape, backdrop or timeout dismissal. Keyboard focus starts on the
+button; native dialog semantics provide modality, and the rendered fallback leaves
+the page background inert when JavaScript is unavailable. Browser navigation is
+not intercepted. Reloading while acknowledgement is pending shows it again.
+
+The link-setup request uses the same mechanism with its own generic confirmation
+copy. Delivery success, failure, throttling and account presence are not disclosed
+by either request response. Other notices remain on the existing flash path.
+Presentation lives in `assets/css/auth-email.css` and `assets/js/auth-email.js`,
+loaded by the Auth layout only; shared Website/Admin CSS is not modified.
+
+Proof: `email_identity_link_foundation_test.php`,
+`email_identity_link_unit_test.php`, and `email_auth_ack_browser_test.js`, together
+with the existing Auth/invitation regressions. The JavaScript test is a DOM behavior
+harness, not a visual browser rendering proof. Production visual and Postmark
+mailbox proof must follow deployment of these exact files.

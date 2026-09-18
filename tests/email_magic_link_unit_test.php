@@ -94,7 +94,7 @@ try {
         'Request endpoint lacks same-origin or CSRF enforcement.'
     );
     emlu_assert(
-        substr_count($request, 'FC_EMAIL_MAGIC_LINK_REQUEST_MESSAGE') >= 3
+        substr_count($request, 'fc_email_request_require_acknowledgement();') >= 3
             && !str_contains($request, 'identity exists'),
         'Request endpoint does not preserve a generic non-enumerating response.'
     );
