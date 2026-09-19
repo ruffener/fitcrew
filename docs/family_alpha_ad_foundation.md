@@ -107,3 +107,7 @@ Auth PASS 2 now provides the approved Crew-invitation post-auth continuation and
 Migration `0320_crew_invitation_delivery_truth.sql` corrects current-generation mail truth. `PENDING_SEND` means transport has not accepted the message, `TRANSPORT_ACCEPTED` means the configured transport accepted it (not mailbox delivery), and `TRANSPORT_FAILED` means the transport failed/rejected it. `sent_at` is transport-accepted time only. Resend rotates the generation, clears prior current-generation transport evidence, and never restores an older bearer token.
 
 Website applies Auth's shared limiter with Family Alpha policies: invitation issue = 10/15 minutes per Owner; resend = 5/15 minutes per Owner + invitation; invalid raw invitation lookup = 20/15 minutes per network/client subject. The raw bearer token is never used as a persisted rate-limit subject.
+
+## Challenge-scoped invitation evolution (0500)
+
+The normal invitation journey is now Challenge-scoped rather than a two-step Crew-then-Challenge onboarding sequence. `Accept Challenge` ensures Crew membership and participation in the exact current Challenge atomically while preserving personal consent. A server-side Website acceptance intent binds the exact invitation generation, Rule Version, consent contract and privacy choices reviewed before authentication. Public invitation review is safe before sign-in; authentication alone still creates no membership or participation. Historical Crew-only invitation rows remain unmodified legacy truth and cannot complete this Challenge journey.

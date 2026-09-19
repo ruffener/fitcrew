@@ -3950,3 +3950,237 @@ body.fc-modal-open {
     .family-privacy-fields { padding: .8rem; }
     .family-privacy-fields select { font-size: .875rem; }
 }
+
+/* ========================================================================== */
+/* FitCrew UI Foundation v1 — shared semantic roles for new Website surfaces. */
+/* ========================================================================== */
+:root {
+    --fc-type-display: clamp(2.5rem, 5vw, 4.8rem);
+    --fc-type-title: clamp(2rem, 3.6vw, 3.4rem);
+    --fc-type-section: clamp(1.25rem, 2vw, 1.65rem);
+    --fc-type-body: 1rem;
+    --fc-type-support: 0.925rem;
+    --fc-type-meta: 0.8125rem;
+    --fc-line-body: 1.65;
+    --fc-control-height: 46px;
+    --fc-control-height-small: 38px;
+    --fc-focus-ring: 0 0 0 4px rgba(30, 64, 175, 0.18);
+    --fc-card-padding: clamp(1.15rem, 2.4vw, 1.75rem);
+    --fc-page-gap: clamp(1rem, 2.5vw, 1.75rem);
+}
+
+.fc-ui-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: var(--fc-type-title);
+    font-weight: 400;
+    line-height: 0.98;
+    letter-spacing: 0.015em;
+    color: var(--fc-deep-navy);
+}
+
+.fc-ui-section-title {
+    margin: 0;
+    font-size: var(--fc-type-section);
+    line-height: 1.18;
+    color: var(--fc-deep-navy);
+}
+
+.fc-ui-body {
+    margin: 0;
+    font-size: var(--fc-type-body);
+    line-height: var(--fc-line-body);
+    color: var(--fc-text-muted);
+}
+
+.fc-ui-help {
+    font-size: var(--fc-type-support);
+    line-height: 1.5;
+    color: var(--fc-text-muted);
+}
+
+.fc-ui-eyebrow {
+    margin: 0 0 var(--space-2);
+    color: var(--fc-energy-orange);
+    font-size: var(--fc-type-meta);
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.fc-ui-card {
+    border: 1px solid var(--fc-border);
+    border-radius: var(--radius-md);
+    background: var(--fc-surface);
+    box-shadow: var(--shadow-sm);
+    padding: var(--fc-card-padding);
+}
+
+.fc-ui-card-soft {
+    background: var(--fc-surface-soft);
+    box-shadow: none;
+}
+
+.fc-ui-fieldset {
+    display: grid;
+    gap: var(--space-4);
+    margin: 0;
+    padding: var(--space-5);
+    border: 1px solid var(--fc-border);
+    border-radius: var(--radius-md);
+    background: var(--fc-surface-soft);
+}
+
+.fc-ui-fieldset legend {
+    padding: 0 var(--space-2);
+    font-size: var(--fc-type-section);
+    font-weight: 800;
+    color: var(--fc-deep-navy);
+}
+
+.fc-ui-fieldset label {
+    display: grid;
+    gap: var(--space-2);
+    font-weight: 700;
+    color: var(--fc-deep-navy);
+}
+
+.fc-ui-fieldset select,
+.fc-ui-fieldset input,
+.fc-ui-fieldset textarea {
+    min-height: var(--fc-control-height);
+    border: 1px solid var(--fc-border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--fc-white);
+    padding: 0.7rem 0.8rem;
+    color: var(--fc-text);
+}
+
+.fc-ui-fieldset select:focus-visible,
+.fc-ui-fieldset input:focus-visible,
+.fc-ui-fieldset textarea:focus-visible {
+    border-color: var(--fc-royal-blue);
+    outline: none;
+    box-shadow: var(--fc-focus-ring);
+}
+
+.fc-notice {
+    display: grid;
+    gap: 0.25rem;
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--fc-border);
+    border-radius: var(--radius-sm);
+    background: var(--fc-surface-soft);
+    color: var(--fc-text-muted);
+    font-size: var(--fc-type-support);
+    line-height: 1.5;
+}
+
+.fc-notice strong {
+    color: var(--fc-deep-navy);
+}
+
+.fc-notice-info {
+    border-color: #bfd0ff;
+    background: var(--fc-surface-blue);
+}
+
+.fc-notice-account {
+    border-color: rgba(255, 106, 0, 0.35);
+    background: #fff7f0;
+}
+
+.fc-notice-quiet {
+    background: var(--fc-white);
+}
+
+.challenge-invite-page {
+    padding-block: clamp(1.5rem, 5vw, 3.5rem);
+}
+
+.challenge-invite-card {
+    width: min(960px, 100%);
+    margin-inline: auto;
+    display: grid;
+    gap: var(--space-8);
+}
+
+.challenge-invite-heading {
+    display: grid;
+    gap: var(--space-3);
+    max-width: 760px;
+}
+
+.challenge-review-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--fc-page-gap);
+}
+
+.challenge-review-section {
+    display: grid;
+    gap: var(--space-4);
+}
+
+.challenge-review-facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3) var(--space-5);
+    margin: 0;
+}
+
+.challenge-review-facts div {
+    display: grid;
+    gap: 0.18rem;
+}
+
+.challenge-review-facts dt {
+    font-size: var(--fc-type-meta);
+    font-weight: 800;
+    color: var(--fc-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.055em;
+}
+
+.challenge-review-facts dd {
+    margin: 0;
+    font-size: var(--fc-type-body);
+    font-weight: 700;
+    color: var(--fc-deep-navy);
+}
+
+.challenge-account-switch {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.challenge-accept-form {
+    display: grid;
+    gap: var(--space-5);
+}
+
+.challenge-consent {
+    align-items: flex-start;
+}
+
+.challenge-accept-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4);
+}
+
+@media (max-width: 760px) {
+    .challenge-review-grid,
+    .challenge-review-facts {
+        grid-template-columns: 1fr;
+    }
+
+    .challenge-invite-card {
+        padding: var(--space-5);
+    }
+
+    .challenge-accept-actions .button {
+        width: 100%;
+    }
+}

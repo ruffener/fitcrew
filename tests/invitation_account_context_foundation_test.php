@@ -25,27 +25,27 @@ try {
     $session=fc_session_record_create_with_policy($pdo,$owner['id'],$identity['id'],session_id());
     iac_assert(fc_current_account_email($pdo)===$ownerEmail,'Account display used unverified/provider/other-account email.');
     $crew=fc_crew_create($pdo,$owner['id'],'Account context proof');
-    $invitation=fc_crew_invitation_create($pdo,$owner['id'],$crew['id'],$otherEmail);
+    $challenge=fc_challenge_create($pdo,$owner['id'],$crew['id'],'Sole Challenge',['planned_start_date'=>'2026-10-01']);
+    $draft=fc_challenge_rule_current_draft($pdo,$challenge['id']);
+    fc_challenge_rule_publish($pdo,$owner['id'],$challenge['id'],(int)$draft['id']);
+    $invitation=fc_crew_invitation_create($pdo,$owner['id'],$crew['id'],$challenge['id'],$otherEmail);
     $publicId=fc_new_public_id(); $binding=fc_auth_browser_binding();
     $pdo->prepare("INSERT INTO auth_invitation_continuations (public_id,purpose,invitation_public_id,invitation_generation,browser_session_binding_hash,continuation_status,authenticated_user_id,authenticated_session_id,authenticated_at,expires_at) VALUES(?,?,?,?,?,'AUTHENTICATED',?,?,CURRENT_TIMESTAMP(6),DATE_ADD(CURRENT_TIMESTAMP(6),INTERVAL 15 MINUTE))")
         ->execute([$publicId,FC_AUTH_CREW_INVITATION_PURPOSE,$invitation['public_id'],0,fc_secret_evidence_hash($binding),$owner['id'],$session['id']]);
     $_SESSION[FC_AUTH_CREW_INVITATION_SESSION_KEY]=$publicId;
     $continuation=fc_auth_crew_invitation_continuation_current($pdo);
     iac_assert($continuation!==null,'Fixture lacks authenticated continuation.');
-    $signedInUser=$owner; $signedInEmail=fc_current_account_email($pdo); $alreadyMember=true;
-    $display=fc_crew_invitation_continuation_display($pdo,$invitation['public_id'],0,$owner['id']);
-    $originalInvitation=$invitation; $invitation=$display;
+    $signedInUser=$owner; $signedInEmail=fc_current_account_email($pdo); $accountSwitchReady=true;
+    $review=fc_challenge_invitation_review($pdo,(string)$invitation['public_id'],0);
+    iac_assert($review!==null,'Challenge invitation review unavailable.');
     ob_start(); require fc_path('views/public/crew_invitation.php'); $html=ob_get_clean();
     $dom=new DOMDocument(); @$dom->loadHTML($html); $xpath=new DOMXPath($dom);
-    $button=$xpath->query('//form[@action="/crew-invite.php"]/button')->item(0);
-    iac_assert($button!==null && $button->hasAttribute('disabled') && str_contains($button->textContent,$ownerEmail),'Existing-member button not disabled/identified.');
-    iac_assert(str_contains($html,$ownerEmail) && str_contains($html,$otherEmail),'Current account and invitation destination not visible.');
+    $button=$xpath->query('//form[@action="/crew-invite.php"]//button[contains(normalize-space(.),"Accept Challenge")]')->item(0);
+    iac_assert($button!==null && !$button->hasAttribute('disabled'),'Current signed-in account cannot make explicit Challenge acceptance.');
+    iac_assert(str_contains($html,$ownerEmail),'Current canonical verified FitCrew email not visible.');
+    iac_assert(!str_contains($html,$otherEmail),'Invitation delivery email must not be presented as signed-in identity.');
     iac_assert($xpath->query('//form[@action="/auth/invitation/switch-account.php"]/input[@name="csrf_token"]')->length===1,'Switch is not a protected POST form.');
-    $alreadyMember=false;
-    ob_start(); require fc_path('views/public/crew_invitation.php'); $html=ob_get_clean();
-    $dom=new DOMDocument(); @$dom->loadHTML($html); $xpath=new DOMXPath($dom);
-    iac_assert(!$xpath->query('//form[@action="/crew-invite.php"]/button')->item(0)->hasAttribute('disabled'),'Eligible account cannot accept.');
-    $invitation=$originalInvitation;
+
 
     $beforeSession=$_SESSION;
     $countUsers=(int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
@@ -104,16 +104,13 @@ try {
     $pdo->exec('ROLLBACK TO SAVEPOINT switch_success'); $_SESSION=$beforeSession;
     iac_assert(fc_session_record_resolve_active($pdo,session_id(),3600)!==null && fc_auth_crew_invitation_continuation_current($pdo)!==null,'Rollback failed to preserve original authority.');
 
-    // Reproduce null context with one real accessible Challenge; never manufacture participation.
-    $challenge=fc_challenge_create($pdo,$owner['id'],$crew['id'],'Sole Challenge',['planned_start_date'=>'2026-10-01']);
+    // One database-backed current Challenge removes the previous ambiguity case.
     fc_product_context_persist($pdo,$owner['id'],$crew['id'],null);
     $context=fc_product_context($pdo,$owner['id']);
-    iac_assert((int)($context['challenge']['id']??0)===$challenge['id'],'Sole accessible Challenge not restored.');
+    iac_assert((int)($context['challenge']['id']??0)===$challenge['id'],'Sole accessible current Challenge not restored.');
     fc_product_context_select_crew($pdo,$owner['id'],$crew['id']);
-    iac_assert((int)fc_product_context($pdo,$owner['id'])['challenge']['id']===$challenge['id'],'Selecting same Crew cleared Challenge.');
-    $second=fc_challenge_create($pdo,$owner['id'],$crew['id'],'Legacy second Challenge',['planned_start_date'=>'2026-10-01']);
-    fc_product_context_persist($pdo,$owner['id'],$crew['id'],null);
-    iac_assert(fc_product_context($pdo,$owner['id'])['challenge']===null,'Ambiguous Challenge was guessed.');
+    iac_assert((int)fc_product_context($pdo,$owner['id'])['challenge']['id']===$challenge['id'],'Selecting same Crew cleared current Challenge.');
+    iac_denied(fn()=>fc_challenge_create($pdo,$owner['id'],$crew['id'],'Illegal second current Challenge',['planned_start_date'=>'2026-10-01']));
     fc_product_context_select_challenge($pdo,$owner['id'],$challenge['id']);
     fc_product_context_select_crew($pdo,$owner['id'],$crew['id']);
     iac_assert((int)fc_product_context($pdo,$owner['id'])['challenge']['id']===$challenge['id'],'Explicit Challenge selection lost.');
@@ -121,7 +118,7 @@ try {
     iac_assert(fc_product_context($pdo,$other['id'])['challenge']===null,'Context granted Challenge access without participation.');
     $pdo->rollBack();
     fwrite(STDOUT,"Invitation account/context foundation: PASS\n- self-only verified email and explicit account/destination labels; disabled existing-member button\n- switch revalidation, fresh anonymous binding, session revocation, replay denial, no expiry extension\n- existing and new EMAIL account after switch returns to invitation; no auto-membership
-- cancellation/rotation/expiry/revocation denial and rollback-safe authority\n- sole accessible Challenge repair, explicit selection preservation, ambiguity/access guards\n- no account, admission, participation or invitation consumption by switching; fixtures rolled back\n");
+- cancellation/rotation/expiry/revocation denial and rollback-safe authority\n- sole current-Challenge repair, second-current denial, explicit selection preservation, access guards\n- no account, admission, participation or invitation consumption by switching; fixtures rolled back\n");
 } catch(Throwable $e) {
     if($pdo->inTransaction()) $pdo->rollBack();
     fwrite(STDERR,'[FAIL] '.$e->getMessage().PHP_EOL); exit(1);

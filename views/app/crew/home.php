@@ -53,7 +53,7 @@
     <?php if ((string) $crew['membership_role'] === 'OWNER'): ?>
         <div class="section-bar-actions">
             <span class="status-chip status-chip-blue">Crew Owner</span>
-            <button class="button button-primary button-small" type="button" data-modal-open="invite-crew-member-modal">Invite Member</button>
+            <button class="button button-primary button-small" type="button" data-modal-open="invite-crew-member-modal">Invite to Challenge</button>
         </div>
     <?php endif; ?>
 </section>
@@ -106,16 +106,21 @@
 <dialog class="fc-modal" id="invite-crew-member-modal" data-fitcrew-modal aria-labelledby="invite-crew-member-title">
     <div class="fc-modal-panel">
         <header class="fc-modal-hero">
-            <div><p class="eyebrow">Invite Member</p><h2 id="invite-crew-member-title">Invite someone to <?= fc_e((string)$crew['display_name']) ?>.</h2><p>We’ll email a private invitation. They become a member only after signing in and accepting.</p></div>
+            <div><p class="eyebrow">Challenge Invitation</p><h2 id="invite-crew-member-title"><?php if ($currentChallenge !== null): ?>Invite someone to <?= fc_e((string)$currentChallenge['display_name']) ?>.<?php else: ?>No current Challenge yet.<?php endif; ?></h2><p><?php if ($currentChallenge !== null): ?>We’ll email a private Challenge review. Accepting joins this Crew and that Challenge in one journey.<?php else: ?>Create and publish the next Challenge before inviting participants.<?php endif; ?></p></div>
             <button class="fc-modal-close" type="button" data-modal-close aria-label="Close invitation"><span aria-hidden="true">×</span></button>
         </header>
         <div class="fc-modal-body">
             <form class="product-form" method="post" action="/crew.php">
                 <?= fc_csrf_input() ?>
                 <input type="hidden" name="action" value="invite_member">
+                <?php if ($currentChallenge !== null): ?>
                 <label>Email address<input type="email" name="email" maxlength="254" required autocomplete="email" placeholder="family@example.com"></label>
-                <p class="form-help">The email address is only the invitation destination. It does not become FitCrew identity.</p>
-                <div class="fc-modal-actions"><button class="button button-secondary" type="button" data-modal-close>Cancel</button><button class="button button-primary" type="submit">Send Invitation</button></div>
+                <p class="form-help">The Owner supplies only an email destination. The participant chooses how to authenticate and how to connect health later.</p>
+                <div class="fc-modal-actions"><button class="button button-secondary" type="button" data-modal-close>Cancel</button><button class="button button-primary" type="submit">Send Challenge Invitation</button></div>
+                <?php else: ?>
+                <div class="fc-notice fc-notice-info"><strong>Create the next Challenge first.</strong><span>A Challenge invitation always identifies one specific current Challenge.</span></div>
+                <div class="fc-modal-actions"><button class="button button-secondary" type="button" data-modal-close>Close</button></div>
+                <?php endif; ?>
             </form>
         </div>
     </div>
@@ -137,10 +142,15 @@
             ?>
             <div class="member-card-copy">
                 <strong><?= fc_e((string)$invitation['invited_email']) ?></strong>
-                <span>Pending · <?= fc_e($transportLabel) ?> · expires <?= fc_e(date('M j, Y', strtotime((string)$invitation['expires_at']))) ?></span>
+                <?php if ($invitation['challenge_id'] === null): ?>
+                    <span>Legacy Crew-only invitation · <?= fc_e($transportLabel) ?> · expires <?= fc_e(date('M j, Y', strtotime((string)$invitation['expires_at']))) ?></span>
+                    <small>This older invitation cannot accept the current Challenge. Cancel it and send a new Challenge invitation.</small>
+                <?php else: ?>
+                    <span><?= fc_e((string)$invitation['challenge_name']) ?> · Pending · <?= fc_e($transportLabel) ?> · expires <?= fc_e(date('M j, Y', strtotime((string)$invitation['expires_at']))) ?></span>
+                <?php endif; ?>
             </div>
             <div class="section-bar-actions">
-                <form method="post" action="/crew.php"><?= fc_csrf_input() ?><input type="hidden" name="action" value="resend_invitation"><input type="hidden" name="invitation_public_id" value="<?= fc_e((string)$invitation['public_id']) ?>"><button class="button button-secondary button-small" type="submit">Resend</button></form>
+                <?php if ($invitation['challenge_id'] !== null): ?><form method="post" action="/crew.php"><?= fc_csrf_input() ?><input type="hidden" name="action" value="resend_invitation"><input type="hidden" name="invitation_public_id" value="<?= fc_e((string)$invitation['public_id']) ?>"><button class="button button-secondary button-small" type="submit">Resend</button></form><?php endif; ?>
                 <form method="post" action="/crew.php"><?= fc_csrf_input() ?><input type="hidden" name="action" value="cancel_invitation"><input type="hidden" name="invitation_public_id" value="<?= fc_e((string)$invitation['public_id']) ?>"><button class="button button-danger button-small" type="submit">Cancel</button></form>
             </div>
         </article>

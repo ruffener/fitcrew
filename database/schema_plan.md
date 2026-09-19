@@ -106,3 +106,15 @@ Website-owned `0320_crew_invitation_delivery_truth.sql` corrects invitation tran
 Legacy pre-0320 `sent_at` values are cleared because the earlier runtime set them before
 transport acceptance and they are not reliable delivery evidence. Resend rotates the invitation
 generation (`resend_count`), resets current-generation transport truth, and never restores an old bearer token.
+
+## Challenge Invitation Journey (0500)
+
+Website-owned `0500_challenge_invitation_journey.sql` evolves the existing invitation foundation without deleting historical Crew/Challenge truth:
+
+- `crew_current_challenges` is the explicit MariaDB-backed authority for **zero or one current Challenge per Crew** while `challenges` remains one-to-many historical truth;
+- migration preflight fails before persistent schema mutation if the incoming database has more than one current/non-finalized Challenge under the accepted pre-0500 semantics;
+- `crew_invitations.challenge_id` scopes all new normal invitations to one exact Crew + current Challenge; historical Crew-only invitation rows remain `NULL` and are not converted;
+- `challenge_invitation_acceptance_intents` stores the one-time Website product acceptance reviewed before authentication, including exact invitation generation, Crew, Challenge, published Rule Version, consent contract and participant privacy choices;
+- final enrollment reuses the existing Challenge acceptance/privacy/participation/history tables and does not create a parallel participation engine.
+
+Migration family `05xx` is Website-owned for the Challenge Invitation Program. Auth `03xx` and Admin `0400` remain outside this ownership boundary.

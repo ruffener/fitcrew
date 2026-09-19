@@ -32,12 +32,20 @@ if (fc_is_post()) {
         } elseif ($action === 'invite_member') {
             $context = fc_product_context($pdo, $userId);
             if ($context['crew'] === null) throw new DomainException('Select a Crew before inviting someone.');
+            $currentChallenge = fc_crew_current_challenge($pdo, (int) $context['crew']['id']);
+            if ($currentChallenge === null) throw new DomainException('Create and publish the Crew’s current Challenge before inviting participants.');
             fc_crew_invitation_rate_limit_issue($pdo, $userId);
-            $invitation = fc_crew_invitation_create($pdo, $userId, (int)$context['crew']['id'], (string)($_POST['email'] ?? ''));
+            $invitation = fc_crew_invitation_create(
+                $pdo,
+                $userId,
+                (int) $context['crew']['id'],
+                (int) $currentChallenge['id'],
+                (string) ($_POST['email'] ?? '')
+            );
             $delivery = fc_crew_invitation_deliver($pdo, $invitation);
             fc_flash('success', $delivery['driver'] === 'postmark'
-                ? 'Crew invitation accepted by email transport.'
-                : 'Crew invitation created. Email delivery is still in log mode.');
+                ? 'Challenge invitation accepted by email transport.'
+                : 'Challenge invitation created. Email delivery is still in log mode.');
         } elseif ($action === 'resend_invitation') {
             $context = fc_product_context($pdo, $userId);
             if ($context['crew'] === null) throw new DomainException('Select a Crew before resending an invitation.');
@@ -70,6 +78,7 @@ if (fc_is_post()) {
 
 $appContext = fc_product_context($pdo, $userId);
 $crew = $appContext['crew'];
+$currentChallenge = $crew !== null ? fc_crew_current_challenge($pdo, (int) $crew['id']) : null;
 $memberships = $crew !== null ? fc_crew_memberships($pdo, $userId, (int) $crew['id']) : [];
 $pendingInvitations = $crew !== null && (string)$crew['membership_role'] === 'OWNER' ? fc_crew_invitations_pending($pdo, $userId, (int)$crew['id']) : [];
 $crewChallenges = $crew !== null ? fc_challenge_summaries_for_crew($pdo, $userId, (int) $crew['id']) : [];

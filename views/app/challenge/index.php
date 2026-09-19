@@ -102,13 +102,18 @@ foreach ($appContext['crews'] as $crewCandidate) {
                 <?php endif; ?>
 
                 <?php if ((string) $groupCrew['membership_role'] === 'OWNER'): ?>
+                    <?php $groupCurrentChallenge = $currentChallengeByCrew[(int) $groupCrew['id']] ?? null; ?>
                     <div class="challenge-index-create-action">
-                        <form method="post" action="/challenge.php">
-                            <?= fc_csrf_input() ?>
-                            <input type="hidden" name="action" value="prepare_new_challenge">
-                            <input type="hidden" name="crew_public_id" value="<?= fc_e((string) $groupCrew['public_id']) ?>">
-                            <button class="button button-primary" type="submit">Create New Challenge</button>
-                        </form>
+                        <?php if ($groupCurrentChallenge === null): ?>
+                            <form method="post" action="/challenge.php">
+                                <?= fc_csrf_input() ?>
+                                <input type="hidden" name="action" value="prepare_new_challenge">
+                                <input type="hidden" name="crew_public_id" value="<?= fc_e((string) $groupCrew['public_id']) ?>">
+                                <button class="button button-primary" type="submit">Create New Challenge</button>
+                            </form>
+                        <?php else: ?>
+                            <div class="fc-notice fc-notice-info"><strong>Current Challenge: <?= fc_e((string) $groupCurrentChallenge['display_name']) ?></strong><span>Finish, archive or delete the current Challenge before creating the next one. Historical Challenges remain available.</span></div>
+                        <?php endif; ?>
                     </div>
                 <?php endif; ?>
             </section>

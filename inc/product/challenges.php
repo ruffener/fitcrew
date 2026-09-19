@@ -2,6 +2,65 @@
 
 declare(strict_types=1);
 
+/** @return array<string,mixed>|null */
+function fc_crew_current_challenge(PDO $pdo, int $crewId, bool $forUpdate = false): ?array
+{
+    if ($forUpdate && !$pdo->inTransaction()) {
+        throw new LogicException('Locking current Challenge authority requires an active transaction.');
+    }
+    $sql =
+        'SELECT c.*, cc.established_at AS current_established_at ' .
+        'FROM crew_current_challenges cc JOIN challenges c ON c.id = cc.challenge_id ' .
+        'WHERE cc.crew_id = :crew_id LIMIT 1';
+    if ($forUpdate) {
+        $sql .= ' FOR UPDATE';
+    }
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([':crew_id' => $crewId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row === false ? null : $row;
+}
+
+function fc_crew_current_challenge_require(PDO $pdo, int $crewId, bool $forUpdate = false): array
+{
+    $challenge = fc_crew_current_challenge($pdo, $crewId, $forUpdate);
+    if ($challenge === null) {
+        throw new DomainException('This Crew does not have a current Challenge.');
+    }
+    return $challenge;
+}
+
+function fc_challenge_is_current_for_crew(PDO $pdo, int $crewId, int $challengeId, bool $forUpdate = false): bool
+{
+    $current = fc_crew_current_challenge($pdo, $crewId, $forUpdate);
+    return $current !== null && (int) $current['id'] === $challengeId;
+}
+
+function fc_crew_current_challenge_release(PDO $pdo, int $crewId, int $challengeId): void
+{
+    if (!$pdo->inTransaction()) {
+        throw new LogicException('Releasing current Challenge authority requires an active transaction.');
+    }
+    $stmt = $pdo->prepare('DELETE FROM crew_current_challenges WHERE crew_id = :crew_id AND challenge_id = :challenge_id');
+    $stmt->execute([':crew_id' => $crewId, ':challenge_id' => $challengeId]);
+}
+
+function fc_crew_current_challenge_restore(PDO $pdo, int $crewId, int $challengeId): void
+{
+    if (!$pdo->inTransaction()) {
+        throw new LogicException('Restoring current Challenge authority requires an active transaction.');
+    }
+    fc_family_lock_crew($pdo, $crewId);
+    $existing = fc_crew_current_challenge($pdo, $crewId, true);
+    if ($existing !== null && (int) $existing['id'] !== $challengeId) {
+        throw new DomainException('This Crew already has a current Challenge. Finish or archive it before restoring another Challenge.');
+    }
+    if ($existing === null) {
+        $insert = $pdo->prepare('INSERT INTO crew_current_challenges (crew_id, challenge_id) VALUES (:crew_id, :challenge_id)');
+        $insert->execute([':crew_id' => $crewId, ':challenge_id' => $challengeId]);
+    }
+}
+
 /** @return array{id:int,public_id:string} */
 function fc_challenge_create(PDO $pdo, int $actorUserId, int $crewId, string $displayName, array $ruleValues = []): array
 {
@@ -13,6 +72,9 @@ function fc_challenge_create(PDO $pdo, int $actorUserId, int $crewId, string $di
     return fc_product_atomic($pdo, function () use ($pdo, $actorUserId, $crewId, $displayName, $ruleValues): array {
         fc_family_lock_crew($pdo, $crewId);
         fc_crew_require_owner($pdo, $actorUserId, $crewId);
+        if (fc_crew_current_challenge($pdo, $crewId, true) !== null) {
+            throw new DomainException('This Crew already has a current Challenge. Finish, archive or delete it before creating the next Challenge.');
+        }
         $publicId = fc_new_public_id();
 
         $insert = $pdo->prepare(
@@ -26,6 +88,9 @@ function fc_challenge_create(PDO $pdo, int $actorUserId, int $crewId, string $di
             ':display_name' => $displayName,
         ]);
         $challengeId = (int) $pdo->lastInsertId();
+
+        $currentInsert = $pdo->prepare('INSERT INTO crew_current_challenges (crew_id, challenge_id) VALUES (:crew_id, :challenge_id)');
+        $currentInsert->execute([':crew_id' => $crewId, ':challenge_id' => $challengeId]);
 
         fc_challenge_rule_draft_create($pdo, $challengeId, $actorUserId, $ruleValues);
 
@@ -178,6 +243,7 @@ function fc_challenge_delete_draft(PDO $pdo, int $actorUserId, int $challengeId)
             'group_id' => (int) $challenge['crew_id'],
         ]);
 
+        fc_crew_current_challenge_release($pdo, (int) $locked['crew_id'], $challengeId);
         $pdo->prepare('DELETE FROM challenge_owner_controls WHERE challenge_id = :id')->execute([':id' => $challengeId]);
 
         $deleteRules = $pdo->prepare(

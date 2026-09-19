@@ -140,6 +140,17 @@ function fc_challenge_manage(PDO $pdo, int $actorUserId, int $challengeId, strin
         if ($action === 'end') $params[':reason'] = $reason === '' ? null : $reason;
         $q = $pdo->prepare('UPDATE challenge_owner_controls SET ' . $sets[$action] . ', revision = revision + 1 WHERE challenge_id = :id');
         $q->execute($params);
+
+        if (in_array($action, ['end', 'archive', 'delete'], true)) {
+            fc_crew_current_challenge_release($pdo, (int) $challenge['crew_id'], $challengeId);
+        } elseif ($action === 'unarchive') {
+            $latest = fc_challenge_management_state($pdo, $challengeId);
+            if ($latest['effective_end_at'] !== null || $latest['deleted_at'] !== null || (string) $challenge['lifecycle_status'] === 'COMPLETED') {
+                throw new DomainException('An ended, deleted or completed Challenge cannot become current again.');
+            }
+            fc_crew_current_challenge_restore($pdo, (int) $challenge['crew_id'], $challengeId);
+        }
+
         $events = ['end'=>'CHALLENGE_ENDED','archive'=>'CHALLENGE_ARCHIVED','unarchive'=>'CHALLENGE_UNARCHIVED','delete'=>'CHALLENGE_DELETED'];
         fc_family_event($pdo, $challengeId, $actorUserId, $events[$action], null,
             $action === 'end' ? ['reason' => $reason, 'competitive_consequence' => 'NOT_DETERMINED'] : []);
@@ -258,45 +269,137 @@ function fc_family_entry_kind(array $challenge,array $publishedRule,DateTimeImmu
 }
 
 /** Only explicit authenticated acceptance can make a new participation ACTIVE. */
-function fc_challenge_accept_participation(PDO $pdo,int $actorUserId,int $challengeId,int $expectedRuleId,bool $accepted,array $privacy,?string $expectedOfferPublicId = null): void
-{
-    fc_product_atomic($pdo,function () use ($pdo,$actorUserId,$challengeId,$expectedRuleId,$accepted,$privacy,$expectedOfferPublicId): void {
-        $challenge=fc_family_lock_challenge($pdo,$challengeId);
-        fc_crew_require_member($pdo,$actorUserId,(int)$challenge['crew_id']);
-        if (!$accepted) throw new DomainException('Please accept the Challenge Rules and competition-results visibility before joining.');
-        $rule=fc_challenge_rule_current_published($pdo,$challengeId);
-        if ($rule === null) throw new DomainException('The Owner needs to publish the Rules before you can accept this Challenge.');
-        if ((int)$rule['id'] !== $expectedRuleId) throw new DomainException('The Rules changed while you were reviewing them. Review the current version before accepting.');
-        $choices=fc_challenge_privacy_validate($privacy);
-        $existing=fc_challenge_participation_for_user($pdo,$challengeId,$actorUserId);
-        $offer=fc_challenge_offer_for_user($pdo,$challengeId,$actorUserId);
-        if ($offer !== null && $offer['offer_status'] === 'PENDING' && !hash_equals((string)$offer['public_id'], (string)$expectedOfferPublicId)) throw new DomainException('This invitation changed. Open the latest invitation before accepting.');
-        if ($existing !== null && $existing['participation_status'] === 'REMOVED' && (!$offer || $offer['offer_status'] !== 'PENDING')) {
-            throw new DomainException('Ask the Owner to invite you again after removal.');
-        }
-        // A cancelled/declined owner offer cannot be claimed by replaying an old acceptance form.
-        if ($offer !== null && in_array($offer['offer_status'],['CANCELLED','DECLINED'],true)) throw new DomainException('This invitation is no longer pending. Ask the Owner for a new invitation.');
-        $q=$pdo->prepare('SELECT id,rule_version_id FROM challenge_acceptance_records WHERE challenge_id=:c AND user_id=:u ORDER BY id DESC LIMIT 1' . fc_product_current_read($pdo));
-        $q->execute([':c'=>$challengeId,':u'=>$actorUserId]); $last=$q->fetch(PDO::FETCH_ASSOC);
-        if ($existing !== null && $existing['participation_status'] === 'ACTIVE' && $last && (int)$last['rule_version_id'] === $expectedRuleId) {
-            // Repeated submission is idempotent; privacy changes use the separate personal control.
-            return;
-        }
-        $q=$pdo->prepare('INSERT INTO challenge_acceptance_records (challenge_id,user_id,rule_version_id,contract_code,measurements_visibility,progress_visibility) VALUES (:c,:u,:r,:contract,:m,:p)');
-        $q->execute([':c'=>$challengeId,':u'=>$actorUserId,':r'=>$expectedRuleId,':contract'=>FC_FAMILY_ALPHA_CONTRACT,':m'=>$choices['measurements_visibility'],':p'=>$choices['progress_visibility']]);
-        $acceptanceId=(int)$pdo->lastInsertId();
-        fc_family_event($pdo,$challengeId,$actorUserId,'CONTRACT_ACCEPTED',$actorUserId,['rule_version_id'=>$expectedRuleId,'contract_code'=>FC_FAMILY_ALPHA_CONTRACT]);
-        fc_challenge_privacy_save($pdo,$actorUserId,$challengeId,$choices);
-        if ($existing === null || $existing['participation_status'] !== 'ACTIVE') {
-            $entry=fc_family_entry_kind($challenge,$rule,new DateTimeImmutable('now',new DateTimeZone('UTC')));
-            $q=$pdo->prepare('INSERT INTO challenge_participations (challenge_id,user_id,participation_status,entry_kind) VALUES (:c,:u,\'ACTIVE\',:e) ON DUPLICATE KEY UPDATE participation_status=\'ACTIVE\',entry_kind=VALUES(entry_kind),withdrawn_at=NULL,removed_at=NULL');
-            $q->execute([':c'=>$challengeId,':u'=>$actorUserId,':e'=>$entry]);
-            $q=$pdo->prepare('INSERT INTO challenge_participation_intervals (challenge_id,user_id,entered_at,entry_source,acceptance_record_id) VALUES (:c,:u,CURRENT_TIMESTAMP(6),\'PERSONAL_ACCEPTANCE\',:a)');
-            $q->execute([':c'=>$challengeId,':u'=>$actorUserId,':a'=>$acceptanceId]);
-            fc_family_event($pdo,$challengeId,$actorUserId,'PARTICIPANT_JOINED',$actorUserId,['entry_kind'=>$entry,'scoring_eligibility'=>'NOT_DETERMINED']);
-        }
-        $q=$pdo->prepare('UPDATE challenge_participant_offers SET offer_status=\'ACCEPTED\',decided_at=CURRENT_TIMESTAMP(6) WHERE challenge_id=:c AND invited_user_id=:u AND offer_status=\'PENDING\'');
-        $q->execute([':c'=>$challengeId,':u'=>$actorUserId]);
+function fc_challenge_accept_participation_locked(
+    PDO $pdo,
+    int $actorUserId,
+    int $challengeId,
+    int $expectedRuleId,
+    bool $accepted,
+    array $privacy,
+    ?string $expectedOfferPublicId = null,
+    string $entrySource = 'PERSONAL_ACCEPTANCE'
+): int {
+    if (!$pdo->inTransaction()) {
+        throw new LogicException('Challenge participation acceptance requires an active transaction.');
+    }
+
+    $challenge = fc_family_lock_challenge($pdo, $challengeId);
+    fc_crew_require_member($pdo, $actorUserId, (int) $challenge['crew_id']);
+    if (!$accepted) {
+        throw new DomainException('Please accept the Challenge Rules and competition-results visibility before joining.');
+    }
+
+    $rule = fc_challenge_rule_current_published($pdo, $challengeId);
+    if ($rule === null) {
+        throw new DomainException('The Owner needs to publish the Rules before you can accept this Challenge.');
+    }
+    if ((int) $rule['id'] !== $expectedRuleId) {
+        throw new DomainException('The Rules changed while you were reviewing them. Review the current version before accepting.');
+    }
+
+    $choices = fc_challenge_privacy_validate($privacy);
+    $existing = fc_challenge_participation_for_user($pdo, $challengeId, $actorUserId);
+    $offer = fc_challenge_offer_for_user($pdo, $challengeId, $actorUserId);
+    if ($offer !== null && $offer['offer_status'] === 'PENDING' && !hash_equals((string) $offer['public_id'], (string) $expectedOfferPublicId)) {
+        throw new DomainException('This invitation changed. Open the latest invitation before accepting.');
+    }
+    if ($existing !== null && $existing['participation_status'] === 'REMOVED' && (!$offer || $offer['offer_status'] !== 'PENDING')) {
+        throw new DomainException('Ask the Owner to invite you again after removal.');
+    }
+    if ($offer !== null && in_array($offer['offer_status'], ['CANCELLED', 'DECLINED'], true)) {
+        throw new DomainException('This invitation is no longer pending. Ask the Owner for a new invitation.');
+    }
+
+    $q = $pdo->prepare(
+        'SELECT id,rule_version_id FROM challenge_acceptance_records ' .
+        'WHERE challenge_id=:c AND user_id=:u ORDER BY id DESC LIMIT 1' . fc_product_current_read($pdo)
+    );
+    $q->execute([':c' => $challengeId, ':u' => $actorUserId]);
+    $last = $q->fetch(PDO::FETCH_ASSOC);
+    if ($existing !== null && $existing['participation_status'] === 'ACTIVE' && $last && (int) $last['rule_version_id'] === $expectedRuleId) {
+        return (int) $last['id'];
+    }
+
+    $q = $pdo->prepare(
+        'INSERT INTO challenge_acceptance_records ' .
+        '(challenge_id,user_id,rule_version_id,contract_code,measurements_visibility,progress_visibility) ' .
+        'VALUES (:c,:u,:r,:contract,:m,:p)'
+    );
+    $q->execute([
+        ':c' => $challengeId,
+        ':u' => $actorUserId,
+        ':r' => $expectedRuleId,
+        ':contract' => FC_FAMILY_ALPHA_CONTRACT,
+        ':m' => $choices['measurements_visibility'],
+        ':p' => $choices['progress_visibility'],
+    ]);
+    $acceptanceId = (int) $pdo->lastInsertId();
+    fc_family_event($pdo, $challengeId, $actorUserId, 'CONTRACT_ACCEPTED', $actorUserId, [
+        'rule_version_id' => $expectedRuleId,
+        'contract_code' => FC_FAMILY_ALPHA_CONTRACT,
+    ]);
+
+    $q = $pdo->prepare(
+        'INSERT INTO challenge_privacy_preferences ' .
+        '(challenge_id,user_id,measurements_visibility,progress_visibility) ' .
+        'VALUES (:c,:u,:m,:p) ' .
+        'ON DUPLICATE KEY UPDATE measurements_visibility=VALUES(measurements_visibility),progress_visibility=VALUES(progress_visibility)'
+    );
+    $q->execute([
+        ':c' => $challengeId,
+        ':u' => $actorUserId,
+        ':m' => $choices['measurements_visibility'],
+        ':p' => $choices['progress_visibility'],
+    ]);
+
+    if ($existing === null || $existing['participation_status'] !== 'ACTIVE') {
+        $entry = fc_family_entry_kind($challenge, $rule, new DateTimeImmutable('now', new DateTimeZone('UTC')));
+        $q = $pdo->prepare(
+            'INSERT INTO challenge_participations (challenge_id,user_id,participation_status,entry_kind) ' .
+            'VALUES (:c,:u,\'ACTIVE\',:e) ' .
+            'ON DUPLICATE KEY UPDATE participation_status=\'ACTIVE\',entry_kind=VALUES(entry_kind),withdrawn_at=NULL,removed_at=NULL'
+        );
+        $q->execute([':c' => $challengeId, ':u' => $actorUserId, ':e' => $entry]);
+        $q = $pdo->prepare(
+            'INSERT INTO challenge_participation_intervals ' .
+            '(challenge_id,user_id,entered_at,entry_source,acceptance_record_id) ' .
+            'VALUES (:c,:u,CURRENT_TIMESTAMP(6),:source,:a)'
+        );
+        $q->execute([':c' => $challengeId, ':u' => $actorUserId, ':source' => $entrySource, ':a' => $acceptanceId]);
+        fc_family_event($pdo, $challengeId, $actorUserId, 'PARTICIPANT_JOINED', $actorUserId, [
+            'entry_kind' => $entry,
+            'scoring_eligibility' => 'NOT_DETERMINED',
+        ]);
+    }
+
+    $q = $pdo->prepare(
+        'UPDATE challenge_participant_offers SET offer_status=\'ACCEPTED\',decided_at=CURRENT_TIMESTAMP(6) ' .
+        'WHERE challenge_id=:c AND invited_user_id=:u AND offer_status=\'PENDING\''
+    );
+    $q->execute([':c' => $challengeId, ':u' => $actorUserId]);
+
+    return $acceptanceId;
+}
+
+function fc_challenge_accept_participation(
+    PDO $pdo,
+    int $actorUserId,
+    int $challengeId,
+    int $expectedRuleId,
+    bool $accepted,
+    array $privacy,
+    ?string $expectedOfferPublicId = null
+): void {
+    fc_product_atomic($pdo, function () use ($pdo, $actorUserId, $challengeId, $expectedRuleId, $accepted, $privacy, $expectedOfferPublicId): void {
+        fc_challenge_accept_participation_locked(
+            $pdo,
+            $actorUserId,
+            $challengeId,
+            $expectedRuleId,
+            $accepted,
+            $privacy,
+            $expectedOfferPublicId
+        );
     });
 }
 

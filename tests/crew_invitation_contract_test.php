@@ -4,32 +4,38 @@ declare(strict_types=1);
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit('Not Found'); }
 function ci_assert(bool $ok,string $message):void { if(!$ok) throw new RuntimeException($message); }
 $root=dirname(__DIR__);
-$sql=file_get_contents($root.'/database/migrations/0300_family_alpha_relationships.sql');
-ci_assert(str_contains($sql,'CREATE TABLE crew_invitations ('),'Crew invitation table missing.');
-ci_assert(str_contains($sql,'token_hash') && !str_contains($sql,'raw_token'),'Only invitation-token hash may be stored.');
-$service=file_get_contents($root.'/inc/product/crew_invitations.php');
-foreach (['fc_crew_invitation_create','fc_crew_invitation_resend','fc_crew_invitation_cancel','fc_crew_invitation_accept','fc_crew_invitation_auth_snapshot'] as $fn) ci_assert(str_contains($service,'function '.$fn.'('),'Missing invitation service '.$fn);
-ci_assert(str_contains($service,"hash('sha256', \$token)"),'Invitation token must be hashed.');
-$crew=file_get_contents($root.'/crew.php');
-foreach (['invite_member','resend_invitation','cancel_invitation'] as $action) ci_assert(str_contains($crew,$action),'Crew controller missing '.$action);
-ci_assert(!str_contains($crew,"member_public_id'] ?? ''\n            );\n            fc_flash('success', 'Crew member added.'"),'Legacy Member-ID add flow must not remain consumer path.');
-$view=file_get_contents($root.'/views/app/crew/home.php');
-ci_assert(str_contains($view,'name="email"') && str_contains($view,'Pending invitations'),'Crew UI must use email invitations and pending state.');
-$landing=file_get_contents($root.'/crew-invite.php');
-ci_assert(str_contains($landing,'fc_is_logged_in()') && str_contains($landing,'fc_crew_invitation_accept'),'Acceptance requires an authenticated FitCrew user.');
-ci_assert(!str_contains($service,'user_auth_identities') && !str_contains($service,'email_at_provider'),'Provider email must not become identity truth.');
-ci_assert(str_contains($service, "resend_count=:g"), 'Auth snapshot must bind expected generation to resend_count.');
-ci_assert(str_contains($service, "expires_at > CURRENT_TIMESTAMP(6)"), 'Auth snapshot must reject elapsed invitations without mutating them.');
-ci_assert(str_contains($service, "accepted_by_user_id IS NULL") && str_contains($service, "accepted_at IS NULL") && str_contains($service, "cancelled_at IS NULL"), 'Auth snapshot must fail closed for accepted/cancelled invitations.');
-ci_assert(str_contains($service, 'if ($lockForAdmission && !$pdo->inTransaction())'), 'Admission locking must require an active transaction.');
-ci_assert(str_contains($service, "\$sql .= ' FOR UPDATE'"), 'Admission locking must use FOR UPDATE.');
-ci_assert(str_contains($service, "'invitation_public_id' =>") && str_contains($service, "'generation' =>") && str_contains($service, "'expires_at' =>"), 'Auth snapshot must return only the minimal approved fields.');
+$migration=file_get_contents($root.'/database/migrations/0500_challenge_invitation_journey.sql') ?: '';
+$service=file_get_contents($root.'/inc/product/crew_invitations.php') ?: '';
+$journey=file_get_contents($root.'/inc/product/challenge_invitations.php') ?: '';
+$crew=file_get_contents($root.'/crew.php') ?: '';
+$landing=file_get_contents($root.'/crew-invite.php') ?: '';
+$view=file_get_contents($root.'/views/public/crew_invitation.php') ?: '';
+$template=file_get_contents($root.'/inc/mail/templates/crew_invitation.php') ?: '';
 
-$pass3Landing=file_get_contents($root.'/crew-invite.php');
-ci_assert(str_contains($pass3Landing,'fc_auth_crew_invitation_continuation_issue('),'Raw invitation landing must issue Auth continuation.');
-ci_assert(str_contains($pass3Landing,'fc_auth_crew_invitation_continuation_current($pdo)'),'Clean invitation page must consume only Auth continuation evidence.');
-ci_assert(str_contains($pass3Landing,'Referrer-Policy: no-referrer'),'Token-bearing response must use no-referrer.');
-ci_assert(!str_contains(file_get_contents($root.'/views/public/crew_invitation.php'),'name="token"'),'Ordinary acceptance form must not carry raw invitation token.');
-ci_assert(str_contains($service,'function fc_crew_invitation_accept_continuation('),'Authenticated continuation acceptance helper missing.');
-ci_assert(str_contains($service,'fc_auth_crew_invitation_continuation_consume('),'Continuation acceptance must consume Auth continuation.');
-fwrite(STDOUT,"Crew invitation contract proof: PASS\n- Email invitation + pending state: PASS\n- Token hash storage / resend rotation: PASS\n- Authenticated explicit acceptance: PASS\n- Provider email remains non-identity: PASS\n- Auth read-only generation snapshot / admission lock contract: PASS\n- Auth continuation / raw-token removal contract: PASS\n");
+foreach (['crew_current_challenges','challenge_invitation_acceptance_intents','ADD COLUMN challenge_id'] as $needle) {
+    ci_assert(str_contains($migration,$needle),'0500 migration missing '.$needle);
+}
+ci_assert(str_contains($service,'function fc_crew_invitation_create(PDO $pdo, int $actorUserId, int $crewId, int $challengeId, string $email)'), 'Normal invitation must be Challenge-scoped.');
+ci_assert(str_contains($service,'fc_auth_account_presence_for_email($pdo, $email)'), 'Private account-presence email customization missing.');
+ci_assert(!str_contains($crew,'account_presence'), 'Account-presence classification must not be exposed to inviter controller/UI.');
+ci_assert(str_contains($template,'KNOWN_ACCOUNT') && str_contains($template,'If you’re new to FitCrew'), 'Known/unknown recipient copy contract missing.');
+ci_assert(str_contains($landing,"header('Referrer-Policy: no-referrer')"),'Raw-token landing must send no-referrer.');
+ci_assert(str_contains($landing,'fc_challenge_invitation_review_session_set('),'Raw token must exchange into server-side review state.');
+ci_assert(str_contains($landing,"fc_redirect('/crew-invite.php')"),'Raw token must redirect to a clean Website URL.');
+ci_assert(!str_contains($view,'name="token"'),'Raw bearer token must not survive in ordinary forms.');
+ci_assert(str_contains($view,'Accept Challenge'),'Public review must expose the explicit product acceptance action.');
+ci_assert(str_contains($view,'Signed in as'),'Authenticated review must identify the FitCrew account.');
+ci_assert(str_contains($view,'Use a different account'),'Authenticated review must offer account switching.');
+ci_assert(str_contains($landing,'fc_auth_crew_invitation_continuation_issue('),'Signed-out acceptance must enter Auth continuation.');
+ci_assert(str_contains($journey,'function fc_challenge_invitation_intent_create('),'Server-side acceptance intent missing.');
+foreach (['invitation_generation','rule_version_id','consent_version','measurements_visibility','progress_visibility'] as $needle) {
+    ci_assert(str_contains($journey,$needle),'Acceptance intent missing '.$needle);
+}
+ci_assert(str_contains($journey,'fc_crew_invitation_auth_snapshot(') && str_contains($journey,'true'), 'Final enrollment must lock/revalidate current invitation generation.');
+ci_assert(str_contains($journey,'fc_challenge_accept_participation_locked('),'Invitation enrollment must reuse the existing Challenge acceptance engine.');
+ci_assert(str_contains($journey,'fc_auth_crew_invitation_continuation_consume('),'Atomic enrollment must consume Auth continuation when applicable.');
+ci_assert(str_contains($journey,'fc_product_context_persist('),'Successful enrollment must select Crew + Challenge context.');
+ci_assert(str_contains($journey,'fc_challenge_invitation_intent_resume_for_invitation('),'Account switching must be able to restore Website acceptance intent after Auth session reset.');
+ci_assert(!str_contains($landing,'email_at_provider') && !str_contains($journey,'email_at_provider'),'Invited/provider email must never become authentication authority.');
+
+fwrite(STDOUT,"Crew invitation contract proof: PASS\n- Challenge-scoped invitation + private account-presence copy: PASS\n- Signed-out public review / raw-token clean redirect: PASS\n- One explicit Accept Challenge / account-switch affordance: PASS\n- Server-side acceptance intent / atomic enrollment reuse: PASS\n- Provider email non-identity: PASS\n");

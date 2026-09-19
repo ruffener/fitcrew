@@ -88,14 +88,19 @@ function fc_crew_invitation_rate_limit_invalid_raw(PDO $pdo, string $clientSubje
 }
 
 /** @return array<string,mixed> */
-function fc_crew_invitation_create(PDO $pdo, int $actorUserId, int $crewId, string $email): array
+function fc_crew_invitation_create(PDO $pdo, int $actorUserId, int $crewId, int $challengeId, string $email): array
 {
     $email = fc_crew_invitation_email($email);
     $crew = fc_crew_require_owner($pdo, $actorUserId, $crewId);
-
     $user = fc_user_find_by_id($pdo, $actorUserId, true);
-    if ($user === null) {
-        throw new DomainException('Inviter is unavailable.');
+    if ($user === null) throw new DomainException('Inviter is unavailable.');
+
+    $current = fc_crew_current_challenge($pdo, $crewId);
+    if ($current === null || (int) $current['id'] !== $challengeId) {
+        throw new DomainException('Invitations can only target this Crew’s current Challenge.');
+    }
+    if (fc_challenge_rule_current_published($pdo, $challengeId) === null) {
+        throw new DomainException('Publish the current Challenge Rules before inviting participants.');
     }
 
     $token = fc_crew_invitation_token();
@@ -104,26 +109,37 @@ function fc_crew_invitation_create(PDO $pdo, int $actorUserId, int $crewId, stri
         ->modify('+' . FC_CREW_INVITATION_TTL_SECONDS . ' seconds')
         ->format('Y-m-d H:i:s.u');
 
-    $result = fc_product_atomic($pdo, function () use ($pdo, $actorUserId, $crewId, $email, $hash, $expires): array {
+    $result = fc_product_atomic($pdo, function () use ($pdo, $actorUserId, $crewId, $challengeId, $email, $hash, $expires): array {
         fc_family_lock_crew($pdo, $crewId);
         fc_crew_require_owner($pdo, $actorUserId, $crewId);
+        $current = fc_crew_current_challenge($pdo, $crewId, true);
+        if ($current === null || (int) $current['id'] !== $challengeId) {
+            throw new DomainException('The Crew’s current Challenge changed before the invitation was created.');
+        }
+        if (fc_challenge_rule_current_published($pdo, $challengeId) === null) {
+            throw new DomainException('Publish the current Challenge Rules before inviting participants.');
+        }
 
         $existing = $pdo->prepare(
-            'SELECT id FROM crew_invitations WHERE crew_id=:c AND invited_email=:e AND invitation_status=\'PENDING\' ORDER BY id DESC LIMIT 1 FOR UPDATE'
+            'SELECT id FROM crew_invitations WHERE crew_id=:c AND challenge_id=:challenge AND invited_email=:e ' .
+            'AND invitation_status=\'PENDING\' ORDER BY id DESC LIMIT 1 FOR UPDATE'
         );
-        $existing->execute([':c' => $crewId, ':e' => $email]);
+        $existing->execute([':c' => $crewId, ':challenge' => $challengeId, ':e' => $email]);
         if ($existing->fetchColumn() !== false) {
-            throw new DomainException('A pending invitation already exists for that email. Resend or cancel it instead.');
+            throw new DomainException('A pending invitation already exists for that email and Challenge. Resend or cancel it instead.');
         }
 
         $publicId = fc_new_public_id();
         $insert = $pdo->prepare(
             'INSERT INTO crew_invitations ' .
-            '(public_id,crew_id,invited_email,invited_by_user_id,token_hash,expires_at,transport_status,sent_at) ' .
-            'VALUES (:p,:c,:e,:u,:h,:x,\'PENDING_SEND\',NULL)'
+            '(public_id,crew_id,challenge_id,invited_email,invited_by_user_id,token_hash,expires_at,transport_status,sent_at) ' .
+            'VALUES (:p,:c,:challenge,:e,:u,:h,:x,\'PENDING_SEND\',NULL)'
         );
-        $insert->execute([':p'=>$publicId, ':c'=>$crewId, ':e'=>$email, ':u'=>$actorUserId, ':h'=>$hash, ':x'=>$expires]);
-        return ['id'=>(int)$pdo->lastInsertId(), 'public_id'=>$publicId];
+        $insert->execute([
+            ':p' => $publicId, ':c' => $crewId, ':challenge' => $challengeId, ':e' => $email,
+            ':u' => $actorUserId, ':h' => $hash, ':x' => $expires,
+        ]);
+        return ['id' => (int) $pdo->lastInsertId(), 'public_id' => $publicId];
     });
 
     return [
@@ -133,7 +149,9 @@ function fc_crew_invitation_create(PDO $pdo, int $actorUserId, int $crewId, stri
         'token' => $token,
         'email' => $email,
         'crew_name' => (string) $crew['display_name'],
+        'challenge_name' => (string) $current['display_name'],
         'inviter_name' => (string) ($user['display_name'] ?? 'FitCrew'),
+        'account_presence' => fc_auth_account_presence_for_email($pdo, $email),
         'expires_at' => $expires,
     ];
 }
@@ -143,11 +161,13 @@ function fc_crew_invitations_pending(PDO $pdo, int $actorUserId, int $crewId): a
 {
     fc_crew_require_owner($pdo, $actorUserId, $crewId);
     $query = $pdo->prepare(
-        'SELECT public_id, invited_email, sent_at, resend_count, expires_at, ' .
-        'transport_status, transport_driver, transport_message_id, transport_attempted_at ' .
-        'FROM crew_invitations WHERE crew_id=:c AND invitation_status=\'PENDING\' ORDER BY id DESC'
+        'SELECT i.public_id,i.challenge_id,i.invited_email,i.sent_at,i.resend_count,i.expires_at,' .
+        'i.transport_status,i.transport_driver,i.transport_message_id,i.transport_attempted_at,' .
+        'c.public_id AS challenge_public_id,c.display_name AS challenge_name ' .
+        'FROM crew_invitations i LEFT JOIN challenges c ON c.id=i.challenge_id ' .
+        'WHERE i.crew_id=:c AND i.invitation_status=\'PENDING\' ORDER BY i.id DESC'
     );
-    $query->execute([':c'=>$crewId]);
+    $query->execute([':c' => $crewId]);
     return $query->fetchAll(PDO::FETCH_ASSOC);
 }
 
@@ -169,9 +189,7 @@ function fc_crew_invitation_resend(PDO $pdo, int $actorUserId, int $crewId, stri
 {
     $crew = fc_crew_require_owner($pdo, $actorUserId, $crewId);
     $user = fc_user_find_by_id($pdo, $actorUserId, true);
-    if ($user === null) {
-        throw new DomainException('Inviter is unavailable.');
-    }
+    if ($user === null) throw new DomainException('Inviter is unavailable.');
 
     $token = fc_crew_invitation_token();
     $hash = fc_crew_invitation_token_hash($token);
@@ -179,32 +197,42 @@ function fc_crew_invitation_resend(PDO $pdo, int $actorUserId, int $crewId, stri
         ->modify('+' . FC_CREW_INVITATION_TTL_SECONDS . ' seconds')
         ->format('Y-m-d H:i:s.u');
 
-    $row = fc_product_atomic($pdo, function () use ($pdo,$actorUserId,$crewId,$publicId,$hash,$expires): array {
-        fc_family_lock_crew($pdo,$crewId);
-        $row = fc_crew_invitation_require_owner($pdo,$actorUserId,$crewId,$publicId);
-        if ((string)$row['invitation_status'] !== 'PENDING') {
-            throw new DomainException('Only a pending invitation can be resent.');
+    $row = fc_product_atomic($pdo, function () use ($pdo, $actorUserId, $crewId, $publicId, $hash, $expires): array {
+        fc_family_lock_crew($pdo, $crewId);
+        $row = fc_crew_invitation_require_owner($pdo, $actorUserId, $crewId, $publicId);
+        if ((string) $row['invitation_status'] !== 'PENDING') throw new DomainException('Only a pending invitation can be resent.');
+        if ($row['challenge_id'] === null) {
+            throw new DomainException('This is a legacy Crew-only invitation. Cancel it and create a new Challenge invitation.');
         }
+        $current = fc_crew_current_challenge($pdo, $crewId, true);
+        if ($current === null || (int) $current['id'] !== (int) $row['challenge_id']) {
+            throw new DomainException('That invitation no longer targets this Crew’s current Challenge.');
+        }
+        $pdo->prepare(
+            'UPDATE challenge_invitation_acceptance_intents SET intent_status=\'INVALIDATED\' ' .
+            'WHERE invitation_id=:invitation_id AND intent_status=\'PENDING\''
+        )->execute([':invitation_id' => (int) $row['id']]);
 
-        $update=$pdo->prepare(
-            'UPDATE crew_invitations SET ' .
-            'token_hash=:h, expires_at=:x, resend_count=resend_count+1, ' .
-            'transport_status=\'PENDING_SEND\', transport_driver=NULL, transport_message_id=NULL, ' .
-            'transport_attempted_at=NULL, sent_at=NULL ' .
-            'WHERE id=:id'
+        $update = $pdo->prepare(
+            'UPDATE crew_invitations SET token_hash=:h,expires_at=:x,resend_count=resend_count+1,' .
+            'transport_status=\'PENDING_SEND\',transport_driver=NULL,transport_message_id=NULL,' .
+            'transport_attempted_at=NULL,sent_at=NULL WHERE id=:id'
         );
-        $update->execute([':h'=>$hash,':x'=>$expires,':id'=>(int)$row['id']]);
+        $update->execute([':h' => $hash, ':x' => $expires, ':id' => (int) $row['id']]);
         return $row;
     });
 
+    $challenge = fc_crew_current_challenge($pdo, $crewId);
     return [
-        'public_id'=>(string)$row['public_id'],
-        'generation'=>(int)$row['resend_count'] + 1,
-        'token'=>$token,
-        'email'=>(string)$row['invited_email'],
-        'crew_name'=>(string)$crew['display_name'],
-        'inviter_name'=>(string)($user['display_name'] ?? 'FitCrew'),
-        'expires_at'=>$expires,
+        'public_id' => (string) $row['public_id'],
+        'generation' => (int) $row['resend_count'] + 1,
+        'token' => $token,
+        'email' => (string) $row['invited_email'],
+        'crew_name' => (string) $crew['display_name'],
+        'challenge_name' => (string) ($challenge['display_name'] ?? 'current Challenge'),
+        'inviter_name' => (string) ($user['display_name'] ?? 'FitCrew'),
+        'account_presence' => fc_auth_account_presence_for_email($pdo, (string) $row['invited_email']),
+        'expires_at' => $expires,
     ];
 }
 
@@ -270,6 +298,10 @@ function fc_crew_invitation_cancel(PDO $pdo, int $actorUserId, int $crewId, stri
             throw new DomainException('That invitation is no longer pending.');
         }
         $pdo->prepare(
+            'UPDATE challenge_invitation_acceptance_intents SET intent_status=\'INVALIDATED\' ' .
+            'WHERE invitation_id=:invitation_id AND intent_status=\'PENDING\''
+        )->execute([':invitation_id' => (int) $row['id']]);
+        $pdo->prepare(
             'UPDATE crew_invitations SET invitation_status=\'CANCELLED\',cancelled_at=CURRENT_TIMESTAMP(6) WHERE id=:id'
         )->execute([':id'=>(int)$row['id']]);
     });
@@ -280,189 +312,20 @@ function fc_crew_invitation_find_token(PDO $pdo, string $token): ?array
 {
     $hash = fc_crew_invitation_token_hash($token);
     $query = $pdo->prepare(
-        'SELECT i.*, c.display_name AS crew_name, u.display_name AS inviter_name ' .
+        'SELECT i.*,c.display_name AS crew_name,u.display_name AS inviter_name,ch.display_name AS challenge_name ' .
         'FROM crew_invitations i JOIN crews c ON c.id=i.crew_id JOIN users u ON u.id=i.invited_by_user_id ' .
+        'LEFT JOIN challenges ch ON ch.id=i.challenge_id ' .
         'WHERE i.token_hash=:h LIMIT 1'
     );
-    $query->execute([':h'=>$hash]);
-    $row=$query->fetch(PDO::FETCH_ASSOC);
-    if ($row === false) {
-        return null;
-    }
-    if ((string)$row['invitation_status'] === 'PENDING' && strtotime((string)$row['expires_at']) < time()) {
-        $pdo->prepare(
-            'UPDATE crew_invitations SET invitation_status=\'EXPIRED\' WHERE id=:id AND invitation_status=\'PENDING\''
-        )->execute([':id'=>(int)$row['id']]);
-        $row['invitation_status']='EXPIRED';
+    $query->execute([':h' => $hash]);
+    $row = $query->fetch(PDO::FETCH_ASSOC);
+    if ($row === false) return null;
+    if ((string) $row['invitation_status'] === 'PENDING' && strtotime((string) $row['expires_at']) < time()) {
+        $pdo->prepare('UPDATE crew_invitations SET invitation_status=\'EXPIRED\' WHERE id=:id AND invitation_status=\'PENDING\'')
+            ->execute([':id' => (int) $row['id']]);
+        $row['invitation_status'] = 'EXPIRED';
     }
     return $row;
-}
-
-/**
- * Product display context for an authenticated continuation. Provider email is
- * deliberately absent; the invitation email remains delivery-only truth.
- *
- * @return array<string,mixed>|null
- */
-function fc_crew_invitation_continuation_display(
-    PDO $pdo,
-    string $invitationPublicId,
-    int $generation,
-    int $actorUserId
-): ?array {
-    if (fc_crew_invitation_auth_snapshot($pdo, $invitationPublicId, $generation, false) === null) {
-        return null;
-    }
-
-    $query = $pdo->prepare(
-        'SELECT i.public_id, i.crew_id, i.resend_count, i.expires_at, i.invited_email, ' .
-        'c.public_id AS crew_public_id, c.display_name AS crew_name, u.display_name AS inviter_name, ' .
-        'm.role_code AS existing_role, m.membership_status AS existing_membership_status ' .
-        'FROM crew_invitations i ' .
-        'JOIN crews c ON c.id=i.crew_id ' .
-        'JOIN users u ON u.id=i.invited_by_user_id ' .
-        'LEFT JOIN crew_memberships m ON m.crew_id=i.crew_id AND m.user_id=:actor_user_id ' .
-        'WHERE i.public_id=:public_id AND i.resend_count=:generation LIMIT 1'
-    );
-    $query->execute([
-        ':actor_user_id'=>$actorUserId,
-        ':public_id'=>$invitationPublicId,
-        ':generation'=>$generation,
-    ]);
-    $row=$query->fetch(PDO::FETCH_ASSOC);
-    return $row === false ? null : $row;
-}
-
-/**
- * Authenticated continuation acceptance. Website owns one SQL transaction and
- * consumes the Auth continuation only after locked final product validation.
- *
- * @param null|callable(PDO,string,int):bool $consumeContinuation
- */
-function fc_crew_invitation_accept_continuation(
-    PDO $pdo,
-    int $actorUserId,
-    string $invitationPublicId,
-    int $generation,
-    ?callable $consumeContinuation = null
-): int {
-    if (!$pdo->inTransaction()) {
-        throw new LogicException('Crew invitation continuation acceptance requires an active Website-owned transaction.');
-    }
-    if (fc_user_find_by_id($pdo,$actorUserId,true) === null) {
-        throw new DomainException('Signed-in FitCrew user is unavailable.');
-    }
-
-    $consumeContinuation ??= static function (PDO $db, string $publicId, int $currentGeneration): bool {
-        return fc_auth_crew_invitation_continuation_consume($db, $publicId, $currentGeneration);
-    };
-
-    $snapshot = fc_crew_invitation_auth_snapshot(
-        $pdo,
-        $invitationPublicId,
-        $generation,
-        true
-    );
-    if ($snapshot === null) {
-        throw new DomainException('This invitation changed or expired. Open the latest invitation email and try again.');
-    }
-
-    $query=$pdo->prepare(
-        'SELECT id,crew_id,invitation_status,resend_count ' .
-        'FROM crew_invitations WHERE public_id=:p AND resend_count=:g LIMIT 1 FOR UPDATE'
-    );
-    $query->execute([':p'=>$invitationPublicId, ':g'=>$generation]);
-    $row=$query->fetch(PDO::FETCH_ASSOC);
-    if ($row === false || (string)$row['invitation_status'] !== 'PENDING') {
-        throw new DomainException('This invitation is no longer pending.');
-    }
-
-    $crewId=(int)$row['crew_id'];
-    fc_family_lock_crew($pdo,$crewId);
-
-    $membership=$pdo->prepare(
-        'SELECT id,role_code,membership_status FROM crew_memberships ' .
-        'WHERE crew_id=:c AND user_id=:u LIMIT 1 FOR UPDATE'
-    );
-    $membership->execute([':c'=>$crewId,':u'=>$actorUserId]);
-    $existing=$membership->fetch(PDO::FETCH_ASSOC);
-    if ($existing !== false && (string) $existing['membership_status'] === 'ACTIVE') {
-        throw new DomainException('This account is already in the Crew. Switch accounts to use this invitation.');
-    }
-
-    if ($existing === false) {
-        $pdo->prepare(
-            'INSERT INTO crew_memberships (crew_id,user_id,role_code,membership_status) ' .
-            'VALUES (:c,:u,\'MEMBER\',\'ACTIVE\')'
-        )->execute([':c'=>$crewId,':u'=>$actorUserId]);
-    } elseif ((string)$existing['role_code'] !== 'OWNER' && (string)$existing['membership_status'] !== 'ACTIVE') {
-        $pdo->prepare(
-            'UPDATE crew_memberships SET membership_status=\'ACTIVE\',left_at=NULL,removed_at=NULL,joined_at=CURRENT_TIMESTAMP(6) ' .
-            'WHERE id=:id'
-        )->execute([':id'=>(int)$existing['id']]);
-    }
-
-    $accepted=$pdo->prepare(
-        'UPDATE crew_invitations SET invitation_status=\'ACCEPTED\',accepted_by_user_id=:u,accepted_at=CURRENT_TIMESTAMP(6) ' .
-        'WHERE id=:id AND invitation_status=\'PENDING\' AND resend_count=:g'
-    );
-    $accepted->execute([':u'=>$actorUserId,':id'=>(int)$row['id'],':g'=>$generation]);
-    if ($accepted->rowCount() !== 1) {
-        throw new DomainException('This invitation changed before acceptance completed.');
-    }
-
-    if ($consumeContinuation($pdo, $invitationPublicId, $generation) !== true) {
-        throw new DomainException('Invitation authentication could not be completed. Please try the latest invitation again.');
-    }
-
-    return $crewId;
-}
-
-/**
- * Legacy raw-token acceptance helper retained for non-runtime compatibility
- * tests only. Ordinary browser acceptance uses the Auth continuation contract.
- */
-function fc_crew_invitation_accept(PDO $pdo, int $actorUserId, string $token): int
-{
-    return fc_product_atomic($pdo, function () use ($pdo,$actorUserId,$token): int {
-        $hash=fc_crew_invitation_token_hash($token);
-        $query=$pdo->prepare('SELECT * FROM crew_invitations WHERE token_hash=:h LIMIT 1 FOR UPDATE');
-        $query->execute([':h'=>$hash]);
-        $row=$query->fetch(PDO::FETCH_ASSOC);
-        if ($row === false) {
-            throw new DomainException('Invitation is unavailable.');
-        }
-        if ((string)$row['invitation_status'] !== 'PENDING') {
-            throw new DomainException('This invitation is no longer pending.');
-        }
-        if (strtotime((string)$row['expires_at']) < time()) {
-            $pdo->prepare('UPDATE crew_invitations SET invitation_status=\'EXPIRED\' WHERE id=:id')
-                ->execute([':id'=>(int)$row['id']]);
-            throw new DomainException('This invitation expired. Ask the Crew Owner to resend it.');
-        }
-        fc_family_lock_crew($pdo,(int)$row['crew_id']);
-        if (fc_user_find_by_id($pdo,$actorUserId,true) === null) {
-            throw new DomainException('Signed-in FitCrew user is unavailable.');
-        }
-        $membership=$pdo->prepare(
-            'SELECT id,role_code FROM crew_memberships WHERE crew_id=:c AND user_id=:u LIMIT 1 FOR UPDATE'
-        );
-        $membership->execute([':c'=>(int)$row['crew_id'],':u'=>$actorUserId]);
-        $existing=$membership->fetch(PDO::FETCH_ASSOC);
-        if ($existing === false) {
-            $pdo->prepare(
-                'INSERT INTO crew_memberships (crew_id,user_id,role_code,membership_status) VALUES (:c,:u,\'MEMBER\',\'ACTIVE\')'
-            )->execute([':c'=>(int)$row['crew_id'],':u'=>$actorUserId]);
-        } elseif ((string)$existing['role_code'] !== 'OWNER') {
-            $pdo->prepare(
-                'UPDATE crew_memberships SET membership_status=\'ACTIVE\',left_at=NULL,removed_at=NULL,joined_at=CURRENT_TIMESTAMP(6) WHERE id=:id'
-            )->execute([':id'=>(int)$existing['id']]);
-        }
-        $pdo->prepare(
-            'UPDATE crew_invitations SET invitation_status=\'ACCEPTED\',accepted_by_user_id=:u,accepted_at=CURRENT_TIMESTAMP(6) WHERE id=:id'
-        )->execute([':u'=>$actorUserId,':id'=>(int)$row['id']]);
-        return (int)$row['crew_id'];
-    });
 }
 
 /** @param array<string,mixed> $invitation
@@ -476,6 +339,8 @@ function fc_crew_invitation_send_message(array $invitation): array
         (string) $invitation['email'],
         (string) $invitation['inviter_name'],
         (string) $invitation['crew_name'],
+        (string) ($invitation['challenge_name'] ?? 'FitCrew Challenge'),
+        (string) ($invitation['account_presence'] ?? 'UNKNOWN'),
         $acceptUrl
     );
     return fc_mail_send($message);
@@ -516,6 +381,8 @@ function fc_crew_invitation_deliver(PDO $pdo, array $invitation, ?callable $send
         (string) $invitation['email'],
         (string) $invitation['inviter_name'],
         (string) $invitation['crew_name'],
+        (string) ($invitation['challenge_name'] ?? 'FitCrew Challenge'),
+        (string) ($invitation['account_presence'] ?? 'UNKNOWN'),
         $acceptUrl
     );
 

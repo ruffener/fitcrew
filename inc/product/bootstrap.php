@@ -9,6 +9,7 @@ require_once __DIR__ . '/transaction.php';
 require_once __DIR__ . '/authorization.php';
 require_once __DIR__ . '/crews.php';
 require_once __DIR__ . '/crew_invitations.php';
+require_once __DIR__ . '/challenge_invitations.php';
 require_once __DIR__ . '/rules.php';
 require_once __DIR__ . '/challenges.php';
 require_once __DIR__ . '/context.php';

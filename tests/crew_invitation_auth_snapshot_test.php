@@ -47,8 +47,11 @@ try {
     $owner = fc_user_create($pdo, 'Invitation Snapshot Owner');
     $acceptor = fc_user_create($pdo, 'Invitation Snapshot Acceptor');
     $crew = fc_crew_create($pdo, $owner['id'], 'Invitation Snapshot Crew');
+    $challenge = fc_challenge_create($pdo, $owner['id'], $crew['id'], 'Invitation Snapshot Challenge', ['planned_start_date'=>'2100-01-01']);
+    $draft = fc_challenge_rule_current_draft($pdo, $challenge['id']);
+    fc_challenge_rule_publish($pdo, $owner['id'], $challenge['id'], (int) $draft['id']);
 
-    $current = fc_crew_invitation_create($pdo, $owner['id'], $crew['id'], 'current@example.test');
+    $current = fc_crew_invitation_create($pdo, $owner['id'], $crew['id'], $challenge['id'], 'current@example.test');
     $snapshot = fc_crew_invitation_auth_snapshot($pdo, (string) $current['public_id'], 0);
     cias_assert($snapshot !== null, 'Current pending invitation must return a snapshot.');
     cias_assert(
@@ -84,15 +87,16 @@ try {
     );
 
     // Accepted invitation.
-    $accepted = fc_crew_invitation_create($pdo, $owner['id'], $crew['id'], 'accepted@example.test');
-    fc_crew_invitation_accept($pdo, $acceptor['id'], (string) $accepted['token']);
+    $accepted = fc_crew_invitation_create($pdo, $owner['id'], $crew['id'], $challenge['id'], 'accepted@example.test');
+    $pdo->prepare("UPDATE crew_invitations SET invitation_status='ACCEPTED',accepted_by_user_id=:u,accepted_at=CURRENT_TIMESTAMP(6) WHERE public_id=:p")
+        ->execute([':u'=>$acceptor['id'], ':p'=>(string)$accepted['public_id']]);
     cias_null(
         fc_crew_invitation_auth_snapshot($pdo, (string) $accepted['public_id'], 0),
         'Accepted invitation must fail closed.'
     );
 
     // Explicit EXPIRED state.
-    $expiredStatus = fc_crew_invitation_create($pdo, $owner['id'], $crew['id'], 'expired-status@example.test');
+    $expiredStatus = fc_crew_invitation_create($pdo, $owner['id'], $crew['id'], $challenge['id'], 'expired-status@example.test');
     $pdo->prepare("UPDATE crew_invitations SET invitation_status='EXPIRED' WHERE public_id=:p")
         ->execute([':p' => (string) $expiredStatus['public_id']]);
     cias_null(
@@ -101,7 +105,7 @@ try {
     );
 
     // PENDING row with elapsed expires_at must fail without mutating product state.
-    $elapsed = fc_crew_invitation_create($pdo, $owner['id'], $crew['id'], 'elapsed@example.test');
+    $elapsed = fc_crew_invitation_create($pdo, $owner['id'], $crew['id'], $challenge['id'], 'elapsed@example.test');
     $pdo->prepare("UPDATE crew_invitations SET expires_at=DATE_SUB(CURRENT_TIMESTAMP(6), INTERVAL 1 SECOND) WHERE public_id=:p")
         ->execute([':p' => (string) $elapsed['public_id']]);
     cias_null(

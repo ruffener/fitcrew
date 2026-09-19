@@ -127,7 +127,8 @@ try {
         // Published/history-bearing Challenges are not eligible for hard delete.
     }
 
-    $deletable = fc_challenge_create($pdo, $owner['id'], $crew['id'], 'Disposable Draft', [
+    $deleteCrew = fc_crew_create($pdo, $owner['id'], 'Disposable Draft Crew');
+    $deletable = fc_challenge_create($pdo, $owner['id'], $deleteCrew['id'], 'Disposable Draft', [
         'planned_start_date' => '2026-10-01',
     ]);
     wave1_expect_denied(fn () => fc_challenge_delete_draft($pdo, $member['id'], $deletable['id']), 'non-owner cannot delete Challenge Draft');

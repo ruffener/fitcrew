@@ -27,6 +27,9 @@ if (fc_is_post()) {
         } elseif ($action === 'prepare_new_challenge') {
             $crew = fc_crew_require_public($pdo, $userId, (string) ($_POST['crew_public_id'] ?? ''));
             fc_crew_require_owner($pdo, $userId, (int) $crew['id']);
+            if (fc_crew_current_challenge($pdo, (int) $crew['id']) !== null) {
+                throw new DomainException('This Crew already has a current Challenge. Finish, archive or delete it before creating the next Challenge.');
+            }
             fc_product_context_select_crew($pdo, $userId, (int) $crew['id']);
             $redirectTo = '/challenge.php?new=1';
         } elseif ($action === 'create_challenge') {
@@ -74,6 +77,10 @@ if (isset($_GET['challenge']) && ($_GET['view'] ?? '') === 'detail') {
 $showHistory = ($_GET['show'] ?? '') === 'history';
 $allChallenges = fc_challenges_for_user($pdo, $userId, null, $showHistory);
 $personalChallenges = fc_challenge_personal_list($pdo, $userId);
+$currentChallengeByCrew = [];
+foreach ($appContext['crews'] as $contextCrew) {
+    $currentChallengeByCrew[(int) $contextCrew['id']] = fc_crew_current_challenge($pdo, (int) $contextCrew['id']);
+}
 $showCreateChallenge = isset($_GET['new']) && $_GET['new'] === '1' && $crew !== null && (string) $crew['membership_role'] === 'OWNER';
 $showChallengeDetail = isset($_GET['view']) && $_GET['view'] === 'detail' && $challenge !== null;
 
