@@ -4099,16 +4099,16 @@ body.fc-modal-open {
 }
 
 .challenge-invite-card {
-    width: min(960px, 100%);
+    width: min(1180px, 100%);
     margin-inline: auto;
     display: grid;
-    gap: var(--space-8);
+    gap: var(--space-6);
 }
 
 .challenge-invite-heading {
     display: grid;
     gap: var(--space-3);
-    max-width: 760px;
+    max-width: 900px;
 }
 
 .challenge-review-grid {
@@ -4184,3 +4184,98 @@ body.fc-modal-open {
         width: 100%;
     }
 }
+
+/* Website cleanup — shared session control, Challenge/Crew shortcuts, invitation balance */
+.header-session {
+    margin-left: var(--space-2);
+    position: relative;
+    flex: 0 0 auto;
+}
+.header-account-menu { position: relative; }
+.header-account-menu > summary { list-style: none; }
+.header-account-menu > summary::-webkit-details-marker { display: none; }
+.header-account-trigger {
+    min-height: 42px;
+    max-width: 260px;
+    padding: 0.5rem 0.72rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 0.5rem;
+    border: 1px solid var(--fc-border);
+    border-radius: var(--radius-sm);
+    background: var(--fc-white);
+    color: var(--fc-deep-navy);
+    cursor: pointer;
+}
+.header-account-trigger > span,
+.header-account-trigger > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header-account-trigger > span { font-size: 0.74rem; font-weight: 800; }
+.header-account-trigger > small { grid-column: 1 / 2; color: var(--fc-text-muted); font-size: 0.58rem; }
+.header-account-trigger > b { grid-column: 2; grid-row: 1 / span 2; font-size: 0.8rem; }
+.header-account-trigger:hover,
+.header-account-trigger:focus-visible,
+.header-account-menu[open] .header-account-trigger { border-color: var(--fc-royal-blue); box-shadow: var(--fc-focus-ring); outline: none; }
+.header-account-popover {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    z-index: 80;
+    width: min(290px, calc(100vw - 2rem));
+    padding: 0.55rem;
+    display: grid;
+    gap: 0.25rem;
+    border: 1px solid var(--fc-border);
+    border-radius: var(--radius-md);
+    background: var(--fc-white);
+    box-shadow: var(--shadow-md);
+}
+.header-account-identity { padding: 0.6rem 0.65rem 0.7rem; display: grid; gap: 0.15rem; border-bottom: 1px solid var(--fc-border); }
+.header-account-identity strong { font-size: 0.76rem; }
+.header-account-identity span { overflow-wrap: anywhere; color: var(--fc-text-muted); font-size: 0.66rem; }
+.header-account-popover > a,
+.header-account-popover form button {
+    width: 100%; min-height: 40px; padding: 0.55rem 0.65rem; display: flex; align-items: center;
+    border: 0; border-radius: var(--radius-sm); color: var(--fc-deep-navy); background: transparent;
+    font: inherit; font-size: 0.72rem; font-weight: 750; text-align: left; cursor: pointer;
+}
+.header-account-popover > a:hover,
+.header-account-popover form button:hover,
+.header-account-popover > a:focus-visible,
+.header-account-popover form button:focus-visible { background: var(--fc-surface-blue); color: var(--fc-royal-blue); text-decoration: none; outline: none; }
+.site-header-app .app-header-context { margin-left: auto; }
+.app-header-context .context-crew-link,
+.app-header-context .context-challenge-link { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: normal; font-weight: 750; }
+.app-header-context .context-crew-link { color: var(--fc-deep-navy); font-size: 0.78rem; }
+.app-header-context .context-challenge-link { max-width: 320px; color: var(--fc-royal-blue); }
+.app-header-context .context-crew-link:hover,
+.app-header-context .context-challenge-link:hover { text-decoration: underline; text-underline-offset: 0.16rem; }
+.challenge-subnav .challenge-subnav-crew { margin-left: auto; border: 1px solid var(--fc-border); color: var(--fc-royal-blue); background: var(--fc-white); }
+.member-contact-email,
+.participant-contact-email { color: var(--fc-royal-blue) !important; font-size: 0.65rem !important; font-weight: 700; overflow-wrap: anywhere; }
+.invitation-account-choice-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.invitation-account-choice-summary > div { padding: var(--space-4); display: grid; gap: 0.2rem; border: 1px solid var(--fc-border); border-radius: var(--radius-sm); background: var(--fc-surface-soft); }
+.invitation-account-choice-summary span { color: var(--fc-text-muted); font-size: var(--fc-type-meta); font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.invitation-account-choice-summary strong,
+.invitation-account-choice-summary small { overflow-wrap: anywhere; }
+.invitation-account-choice-actions { align-items: stretch; }
+.invitation-account-choice-actions .button,
+.invitation-account-choice-actions form { min-width: 0; }
+@media (min-width: 900px) {
+    .challenge-accept-form .fc-ui-fieldset { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .challenge-accept-form .fc-ui-fieldset > .fc-ui-help,
+    .challenge-accept-form .fc-ui-fieldset > .fc-notice { grid-column: 1 / -1; }
+}
+@media (max-width: 860px) {
+    .header-session { margin-left: auto; }
+    .header-account-trigger { max-width: 190px; }
+    .fitcrew-js-ready .nav-toggle { margin-left: 0; }
+}
+@media (max-width: 620px) {
+    .brand-lockup-type { display: none; }
+    .header-account-trigger { max-width: 148px; }
+    .header-account-trigger > small { display: none; }
+    .invitation-account-choice-summary { grid-template-columns: 1fr; }
+    .challenge-subnav .challenge-subnav-crew { margin-left: 0; }
+}
+

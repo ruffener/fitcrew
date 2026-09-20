@@ -54,6 +54,7 @@ $appContext['challenge']=$challenge;
 foreach ($appContext['crews'] as $contextCrew) { if ((int)$contextCrew['id']===(int)$challenge['crew_id']) $appContext['crew']=$contextCrew; }
 $participants=fc_challenge_participants($pdo,$userId,(int)$challenge['id']);
 $participation=fc_challenge_participation_for_user($pdo,(int)$challenge['id'],$userId);
+$participantContactEmails=$isOwner ? fc_crew_member_contact_email_map($pdo,$userId,(int)$challenge['crew_id']) : [];
 $pendingOffers=$isOwner ? fc_challenge_pending_offers($pdo,$userId,(int)$challenge['id']) : [];
 // A Challenge Owner can invite existing Crew members without receiving their account/provider email.
 $inviteableMembers=[];

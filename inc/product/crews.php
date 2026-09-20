@@ -93,6 +93,32 @@ function fc_crew_memberships(PDO $pdo, int $requestUserId, int $crewId): array
 }
 
 /**
+ * Owner-only presentation helper. Uses canonical verified contact email, never
+ * provider email claims, so duplicate display names can be distinguished safely.
+ * @return array<string,string>
+ */
+function fc_crew_member_contact_email_map(PDO $pdo, int $requestUserId, int $crewId): array
+{
+    fc_crew_require_owner($pdo, $requestUserId, $crewId);
+    $statement = $pdo->prepare(
+        "SELECT u.public_id, " .
+        " (SELECT e.email_canonical FROM user_contact_emails e " .
+        "  WHERE e.user_id = u.id AND e.verification_status = 'VERIFIED' AND e.removed_at IS NULL " .
+        "    AND e.verified_email_canonical = e.email_canonical " .
+        "  ORDER BY e.is_primary_for_contact DESC, e.id ASC LIMIT 1) AS contact_email " .
+        "FROM crew_memberships m JOIN users u ON u.id = m.user_id " .
+        "WHERE m.crew_id = :crew_id AND m.membership_status = 'ACTIVE'"
+    );
+    $statement->execute([':crew_id' => $crewId]);
+    $result = [];
+    foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $email = trim((string) ($row['contact_email'] ?? ''));
+        if ($email !== '') $result[(string) $row['public_id']] = $email;
+    }
+    return $result;
+}
+
+/**
  * Internal fixture/legacy membership helper, not a public invitation endpoint.
  * Owner authority alone is not invitation acceptance. Future Crew invitations
  * must consume Auth proof and the recipient's explicit acceptance atomically.

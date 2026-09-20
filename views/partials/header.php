@@ -1,6 +1,18 @@
 <?php
 $headerVariant = $headerVariant ?? 'public';
 $isAppHeader = $headerVariant === 'app';
+$headerCurrentUser = fc_current_user();
+$headerCurrentEmail = null;
+if ($headerCurrentUser !== null) {
+    try {
+        $headerCurrentEmail = fc_current_account_email(fc_db());
+    } catch (Throwable) {
+        $headerCurrentEmail = null;
+    }
+}
+$headerDisplayName = $headerCurrentUser !== null
+    ? (trim((string) ($headerCurrentUser['display_name'] ?? '')) ?: 'FitCrew account')
+    : '';
 ?>
 <header class="site-header<?= $isAppHeader ? ' site-header-app' : '' ?>">
     <div class="site-header-inner">
@@ -15,9 +27,17 @@ $isAppHeader = $headerVariant === 'app';
         <?php if ($isAppHeader): ?>
             <div class="app-header-context" aria-label="Current FitCrew context">
                 <span class="context-label">Current context</span>
-                <strong><?= isset($appContext['crew']) && $appContext['crew'] !== null ? fc_e((string) $appContext['crew']['display_name']) : 'No Crew yet' ?></strong>
+                <?php if (isset($appContext['crew']) && $appContext['crew'] !== null): ?>
+                    <a class="context-crew-link" href="/crew.php"><?= fc_e((string) $appContext['crew']['display_name']) ?></a>
+                <?php else: ?>
+                    <strong>No Crew yet</strong>
+                <?php endif; ?>
                 <span aria-hidden="true">/</span>
-                <em><?= isset($appContext['challenge']) && $appContext['challenge'] !== null ? fc_e((string) $appContext['challenge']['display_name']) : 'No Challenge selected' ?></em>
+                <?php if (isset($appContext['challenge']) && $appContext['challenge'] !== null): ?>
+                    <a class="context-challenge-link" href="/challenge.php?view=detail&amp;challenge=<?= fc_e(rawurlencode((string) $appContext['challenge']['public_id'])) ?>"><?= fc_e((string) $appContext['challenge']['display_name']) ?></a>
+                <?php else: ?>
+                    <em>No Challenge selected</em>
+                <?php endif; ?>
             </div>
         <?php endif; ?>
 
@@ -34,15 +54,35 @@ $isAppHeader = $headerVariant === 'app';
                 <a href="/crew.php">Crew</a>
                 <a href="/challenge.php">Challenge</a>
                 <a href="/health/google/status.php">Health Connections</a>
-                <form class="nav-logout-form" method="post" action="/logout.php">
-                    <?= fc_csrf_input() ?>
-                    <button class="nav-action nav-action-outline nav-logout-button" type="submit">Sign Out</button>
-                </form>
             <?php else: ?>
                 <a href="/#how-it-works">How It Works</a>
                 <a href="/#private-by-design">Privacy</a>
-                <a class="nav-action nav-action-outline" href="/login.php">Sign In</a>
             <?php endif; ?>
         </nav>
+
+        <div class="header-session">
+            <?php if ($headerCurrentUser === null): ?>
+                <a class="nav-action nav-action-outline header-sign-in" href="/login.php">Sign In</a>
+            <?php else: ?>
+                <details class="header-account-menu">
+                    <summary class="header-account-trigger" aria-label="FitCrew account menu">
+                        <span><?= fc_e($headerDisplayName) ?></span>
+                        <?php if ($headerCurrentEmail !== null): ?><small><?= fc_e($headerCurrentEmail) ?></small><?php endif; ?>
+                        <b aria-hidden="true">⌄</b>
+                    </summary>
+                    <div class="header-account-popover">
+                        <div class="header-account-identity">
+                            <strong><?= fc_e($headerDisplayName) ?></strong>
+                            <?php if ($headerCurrentEmail !== null): ?><span><?= fc_e($headerCurrentEmail) ?></span><?php endif; ?>
+                        </div>
+                        <a href="/account.php">Account</a>
+                        <form method="post" action="/logout.php">
+                            <?= fc_csrf_input() ?>
+                            <button type="submit">Sign Out</button>
+                        </form>
+                    </div>
+                </details>
+            <?php endif; ?>
+        </div>
     </div>
 </header>

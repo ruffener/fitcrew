@@ -281,6 +281,29 @@ if (fc_is_post()) {
             throw new DomainException('This Challenge invitation is no longer available. Open the latest invitation email.');
         }
 
+        if ($action === 'accept_with_current_account') {
+            $currentUser = fc_current_user();
+            if ($currentUser === null) {
+                throw new DomainException('Your current FitCrew session is unavailable.');
+            }
+            if (fc_challenge_invitation_intent_current($pdo) === null) {
+                throw new DomainException('Your Challenge acceptance expired. Review the invitation again.');
+            }
+            fc_auth_crew_invitation_continuation_issue(
+                $pdo,
+                (string) $review['invitation_public_id'],
+                (int) $review['generation'],
+                (string) $review['expires_at']
+            );
+            fc_auth_crew_invitation_continuation_bind_existing_session($pdo, $currentUser);
+            $completed = fc_invitation_complete_authenticated_continuation($pdo);
+            if (!$completed['completed']) {
+                throw new RuntimeException('Challenge enrollment did not complete.');
+            }
+            fc_flash('success', $completed['already_enrolled'] ? 'You are already enrolled in this Challenge.' : 'Welcome to the Challenge.');
+            fc_redirect('/app.php');
+        }
+
         if ($action === 'use_different_account') {
             $auth = fc_auth_crew_invitation_continuation_issue(
                 $pdo,
@@ -352,8 +375,8 @@ if (fc_is_post()) {
                     fc_redirect('/crew-invite.php');
                 }
                 if ($error->getMessage() === 'invitation_email_account_switch_required') {
-                    fc_flash('notice', 'This invitation email belongs to a different FitCrew account. Use a different account to continue.');
-                    fc_redirect('/crew-invite.php');
+                    fc_invitation_audit_auth_rejection($pdo, $error);
+                    fc_redirect('/crew-invite.php?account_switch=1');
                 }
                 fc_invitation_audit_auth_rejection($pdo, $error);
                 throw $error;
@@ -431,6 +454,7 @@ $recipientEmail = $emailContext !== null
     ? (string) $emailContext['email']
     : ($review !== null ? (string) ($review['invited_email'] ?? '') : '');
 $profileRequired = $review !== null && fc_invitation_profile_required();
+$accountSwitchRequired = $review !== null && (string) ($_GET['account_switch'] ?? '') === '1';
 $signedInUser = null;
 $signedInEmail = null;
 

@@ -118,6 +118,52 @@
                 <button class="button button-secondary" type="submit">Use a different FitCrew account</button>
                 <span class="fc-ui-help">Use this only if your existing FitCrew account is under a different email address.</span>
             </form>
+
+            <?php if (!empty($accountSwitchRequired) && $signedInUser !== null): ?>
+                <?php
+                $switchDisplayName = trim((string) ($signedInUser['display_name'] ?? 'FitCrew member')) ?: 'FitCrew member';
+                $switchCurrentEmail = $signedInEmail ?? 'No verified contact email on this account';
+                ?>
+                <dialog
+                    class="fc-modal invitation-account-conflict-modal"
+                    id="invitation-account-conflict-modal"
+                    data-fitcrew-modal
+                    data-modal-auto-open
+                    aria-labelledby="invitation-account-conflict-title"
+                >
+                    <div class="fc-modal-panel">
+                        <header class="fc-modal-hero">
+                            <div>
+                                <p class="eyebrow">Choose the FitCrew account</p>
+                                <h2 id="invitation-account-conflict-title">You’re signed into another account.</h2>
+                                <p>This invitation verifies <?= fc_e($recipientEmail) ?>, while this browser is currently signed in as <?= fc_e($switchDisplayName) ?> · <?= fc_e($switchCurrentEmail) ?>.</p>
+                            </div>
+                            <button class="fc-modal-close" type="button" data-modal-close aria-label="Close account choice"><span aria-hidden="true">×</span></button>
+                        </header>
+                        <div class="fc-modal-body">
+                            <div class="invitation-account-choice-summary">
+                                <div><span>Invitation email</span><strong><?= fc_e($recipientEmail) ?></strong></div>
+                                <div><span>Current FitCrew account</span><strong><?= fc_e($switchDisplayName) ?></strong><small><?= fc_e($switchCurrentEmail) ?></small></div>
+                            </div>
+                            <p>FitCrew will never silently switch accounts. Choose the account that should accept this Challenge.</p>
+                            <div class="fc-modal-actions invitation-account-choice-actions">
+                                <form method="post" action="/crew-invite.php">
+                                    <?= fc_csrf_input() ?>
+                                    <input type="hidden" name="action" value="accept_with_current_account">
+                                    <button class="button button-secondary" type="submit">Use <?= fc_e($switchCurrentEmail) ?></button>
+                                </form>
+                                <form method="post" action="/crew-invite.php">
+                                    <?= fc_csrf_input() ?>
+                                    <input type="hidden" name="action" value="use_different_account">
+                                    <button class="button button-primary" type="submit" data-modal-initial-focus>Sign Out &amp; Choose Another Account</button>
+                                </form>
+                                <a class="button button-secondary" href="/crew-invite.php">Not Now</a>
+                            </div>
+                            <p class="fc-ui-help">If <?= fc_e($recipientEmail) ?> is a brand-new FitCrew account, choose “Sign Out &amp; Choose Another Account.” You can also reopen this invitation in a private browser window.</p>
+                        </div>
+                    </div>
+                </dialog>
+            <?php endif; ?>
         <?php endif; ?>
     </div>
 </section>

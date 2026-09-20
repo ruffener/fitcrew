@@ -13,24 +13,31 @@
         modal.close();
     };
 
+    const openFitCrewModal = (modal, returnFocus = null) => {
+        if (!(modal instanceof HTMLDialogElement) || modal.open) {
+            return;
+        }
+
+        modalReturnFocus = returnFocus instanceof HTMLElement ? returnFocus : null;
+        document.body.classList.add('fc-modal-open');
+        modal.showModal();
+
+        const initialFocus = modal.querySelector('[data-modal-initial-focus], [data-modal-close]');
+        if (initialFocus instanceof HTMLElement) {
+            initialFocus.focus();
+        }
+    };
+
     modalTriggers.forEach((trigger) => {
         trigger.addEventListener('click', () => {
             const modalId = trigger.getAttribute('data-modal-open');
             const modal = modalId ? document.getElementById(modalId) : null;
-
-            if (!(modal instanceof HTMLDialogElement)) {
-                return;
-            }
-
-            modalReturnFocus = trigger;
-            document.body.classList.add('fc-modal-open');
-            modal.showModal();
-
-            const closeButton = modal.querySelector('[data-modal-close]');
-            if (closeButton instanceof HTMLElement) {
-                closeButton.focus();
-            }
+            openFitCrewModal(modal, trigger);
         });
+    });
+
+    document.querySelectorAll('[data-modal-auto-open]').forEach((modal) => {
+        openFitCrewModal(modal);
     });
 
     modalCloseButtons.forEach((button) => {

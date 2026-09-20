@@ -80,6 +80,9 @@ $appContext = fc_product_context($pdo, $userId);
 $crew = $appContext['crew'];
 $currentChallenge = $crew !== null ? fc_crew_current_challenge($pdo, (int) $crew['id']) : null;
 $memberships = $crew !== null ? fc_crew_memberships($pdo, $userId, (int) $crew['id']) : [];
+$memberContactEmails = $crew !== null && (string) $crew['membership_role'] === 'OWNER'
+    ? fc_crew_member_contact_email_map($pdo, $userId, (int) $crew['id'])
+    : [];
 $pendingInvitations = $crew !== null && (string)$crew['membership_role'] === 'OWNER' ? fc_crew_invitations_pending($pdo, $userId, (int)$crew['id']) : [];
 $crewChallenges = $crew !== null ? fc_challenge_summaries_for_crew($pdo, $userId, (int) $crew['id']) : [];
 $signedInEmail = fc_current_account_email($pdo);

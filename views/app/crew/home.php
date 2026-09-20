@@ -62,7 +62,8 @@
         <?php $canRemoveMember = (string) $crew['membership_role'] === 'OWNER' && (string) $member['role_code'] !== 'OWNER' && (string) $member['membership_status'] === 'ACTIVE'; ?>
         <article class="member-card<?= (string) $member['membership_status'] !== 'ACTIVE' ? ' is-muted' : '' ?>">
             <div class="avatar-badge" aria-hidden="true"><?= fc_e(strtoupper(substr(trim((string) ($member['display_name'] ?: 'F')), 0, 1))) ?></div>
-            <div class="member-card-copy"><strong><?= fc_e((string) ($member['display_name'] ?: 'FitCrew member')) ?></strong><?php if ((int) $member['user_id'] === (int) $currentUser['user_id'] && $signedInEmail !== null): ?><span><?= fc_e($signedInEmail) ?></span><?php endif; ?><span><?= fc_e(ucfirst(strtolower((string) $member['role_code']))) ?> · <?= fc_e(ucfirst(strtolower((string) $member['membership_status']))) ?></span></div>
+            <?php $memberContactEmail = $memberContactEmails[(string) $member['user_public_id']] ?? ((int) $member['user_id'] === (int) $currentUser['user_id'] ? $signedInEmail : null); ?>
+            <div class="member-card-copy"><strong><?= fc_e((string) ($member['display_name'] ?: 'FitCrew member')) ?></strong><?php if ($memberContactEmail !== null): ?><span class="member-contact-email"><?= fc_e((string) $memberContactEmail) ?></span><?php endif; ?><span><?= fc_e(ucfirst(strtolower((string) $member['role_code']))) ?> · <?= fc_e(ucfirst(strtolower((string) $member['membership_status']))) ?></span></div>
             <?php if ($canRemoveMember): ?>
                 <button class="member-remove-button" type="button" data-modal-open="remove-member-<?= fc_e((string) $member['user_public_id']) ?>">Remove</button>
             <?php endif; ?>
@@ -115,7 +116,7 @@
                 <input type="hidden" name="action" value="invite_member">
                 <?php if ($currentChallenge !== null): ?>
                 <label>Email address<input type="email" name="email" maxlength="254" required autocomplete="email" placeholder="family@example.com"></label>
-                <p class="form-help">The Owner supplies only an email destination. The participant chooses how to authenticate and how to connect health later.</p>
+                <p class="form-help">The invitation itself verifies access to this email. Health connection comes later. If the recipient already uses FitCrew under another email, they can explicitly choose that account.</p>
                 <div class="fc-modal-actions"><button class="button button-secondary" type="button" data-modal-close>Cancel</button><button class="button button-primary" type="submit">Send Challenge Invitation</button></div>
                 <?php else: ?>
                 <div class="fc-notice fc-notice-info"><strong>Create the next Challenge first.</strong><span>A Challenge invitation always identifies one specific current Challenge.</span></div>
