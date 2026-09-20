@@ -300,7 +300,10 @@ function fc_challenge_invitation_enroll(
         [
             'measurements_visibility' => (string) $intent['measurements_visibility'],
             'progress_visibility' => (string) $intent['progress_visibility'],
-        ]
+        ],
+        null,
+        'PERSONAL_ACCEPTANCE',
+        true // A fresh, locked Challenge-scoped invitation explicitly authorizes re-entry after prior removal.
     );
 
     $accepted = $pdo->prepare(

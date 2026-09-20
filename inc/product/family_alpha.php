@@ -277,7 +277,8 @@ function fc_challenge_accept_participation_locked(
     bool $accepted,
     array $privacy,
     ?string $expectedOfferPublicId = null,
-    string $entrySource = 'PERSONAL_ACCEPTANCE'
+    string $entrySource = 'PERSONAL_ACCEPTANCE',
+    bool $allowRemovedReactivation = false
 ): int {
     if (!$pdo->inTransaction()) {
         throw new LogicException('Challenge participation acceptance requires an active transaction.');
@@ -303,7 +304,12 @@ function fc_challenge_accept_participation_locked(
     if ($offer !== null && $offer['offer_status'] === 'PENDING' && !hash_equals((string) $offer['public_id'], (string) $expectedOfferPublicId)) {
         throw new DomainException('This invitation changed. Open the latest invitation before accepting.');
     }
-    if ($existing !== null && $existing['participation_status'] === 'REMOVED' && (!$offer || $offer['offer_status'] !== 'PENDING')) {
+    if (
+        $existing !== null
+        && $existing['participation_status'] === 'REMOVED'
+        && !$allowRemovedReactivation
+        && (!$offer || $offer['offer_status'] !== 'PENDING')
+    ) {
         throw new DomainException('Ask the Owner to invite you again after removal.');
     }
     if ($offer !== null && in_array($offer['offer_status'], ['CANCELLED', 'DECLINED'], true)) {
