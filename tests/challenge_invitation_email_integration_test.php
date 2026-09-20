@@ -19,6 +19,12 @@ ciei_assert(str_contains($auth,'function fc_auth_invitation_email_complete('),'A
 ciei_assert(str_contains($service,'fc_auth_invitation_email_register('),'Invitation issuance does not register EMAIL proof.');
 ciei_assert(str_contains($service,"'/crew-invite.php?token='") === false,'Website transport must not generate query-token invitation URLs.');
 ciei_assert(str_contains($controller,'history.replaceState'),'Fragment credential is not removed from browser history.');
+$fragmentStart = strpos($controller, "if (!fc_is_post()");
+$fragmentEnd = strpos($controller, "if (fc_is_post())");
+ciei_assert($fragmentStart !== false && $fragmentEnd !== false && $fragmentEnd > $fragmentStart,'Fragment capture bootstrap boundary missing.');
+$fragmentBootstrap = substr($controller, $fragmentStart, $fragmentEnd - $fragmentStart);
+ciei_assert(str_contains($fragmentBootstrap,"header('Referrer-Policy: same-origin');"),'Fragment capture bootstrap must preserve canonical same-origin Origin.');
+ciei_assert(!str_contains($fragmentBootstrap,"header('Referrer-Policy: no-referrer');"),'Fragment capture bootstrap must not force opaque Origin: null.');
 ciei_assert(str_contains($controller,"action: 'capture_invitation_email'"),'Fragment capture action missing.');
 ciei_assert(str_contains($controller,'fc_auth_invitation_email_capture('),'Website does not invoke Auth capture.');
 ciei_assert(str_contains($controller,'fc_auth_invitation_email_complete('),'Website does not invoke Auth completion.');

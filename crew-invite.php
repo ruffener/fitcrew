@@ -155,7 +155,10 @@ function fc_invitation_audit_auth_rejection(PDO $pdo, Throwable $error): void
 if (!fc_is_post()
     && fc_challenge_invitation_review_session_current() === null
     && !isset($_GET['empty'])) {
-    header('Referrer-Policy: no-referrer');
+    // The fragment never reaches the server or Referer header. Keep same-origin
+    // policy here so Chromium sends a canonical same-origin Origin on the
+    // protected capture POST instead of an opaque Origin: null.
+    header('Referrer-Policy: same-origin');
     $csrf = fc_csrf_token();
     ?><!doctype html>
 <html lang="en">
@@ -260,9 +263,13 @@ if (fc_is_post()) {
                 fc_crew_invitation_rate_limit_invalid_raw($pdo, fc_crew_invitation_client_rate_subject());
             } catch (Throwable) {
             }
-            $message = $error instanceof DomainException || $error instanceof InvalidArgumentException
-                ? $error->getMessage()
-                : 'FitCrew could not open that Challenge invitation.';
+            $reason = $error->getMessage();
+            $message = ($error instanceof DomainException || $error instanceof InvalidArgumentException)
+                && str_starts_with($reason, 'invitation_email_')
+                    ? 'FitCrew could not safely open that Challenge invitation. Open the latest invitation email and try again.'
+                    : (($error instanceof DomainException || $error instanceof InvalidArgumentException)
+                        ? $reason
+                        : 'FitCrew could not open that Challenge invitation.');
             fc_flash('error', $message);
             fc_redirect('/crew-invite.php?empty=1');
         }
