@@ -49,7 +49,7 @@
 
             <?php if ($signedInUser !== null): ?>
                 <?php
-                $displayName = trim((string) ($signedInUser['display_name'] ?? 'FitCrew member')) ?: 'FitCrew member';
+                $displayName = trim((string) ($signedInUser['display_name'] ?? 'FitCrew User')) ?: 'FitCrew User';
                 $verifiedEmail = $signedInEmail ?? 'No verified contact email on this account';
                 ?>
                 <div class="fc-notice fc-notice-account">
@@ -121,7 +121,7 @@
 
             <?php if (!empty($accountSwitchRequired) && $signedInUser !== null): ?>
                 <?php
-                $switchDisplayName = trim((string) ($signedInUser['display_name'] ?? 'FitCrew member')) ?: 'FitCrew member';
+                $switchDisplayName = trim((string) ($signedInUser['display_name'] ?? 'FitCrew User')) ?: 'FitCrew User';
                 $switchCurrentEmail = $signedInEmail ?? 'No verified contact email on this account';
                 ?>
                 <dialog

@@ -2,13 +2,13 @@
     <?php require fc_path('views/app/challenge/create.php'); ?>
 <?php elseif ($crew === null): ?>
 <section class="product-hero">
-    <div><p class="eyebrow">Challenge</p><h1>Start with a Crew.</h1><p>Create or join a Crew before entering a FitCrew Challenge.</p></div>
+    <div><p class="eyebrow fc-type-meta">Challenge</p><h1 class="fc-type-page-title">Start with a Crew.</h1><p class="fc-type-body">Create or join a Crew before entering a FitCrew Challenge.</p></div>
     <span class="status-chip status-chip-orange">Crew required</span>
 </section>
 <div class="inline-empty-state"><strong>No Crew selected.</strong><span>Your Challenge home will appear here once you have a Crew.</span><a class="button button-primary button-small" href="/crew.php">Go to Crew</a></div>
 <?php elseif ($challenge === null): ?>
 <section class="product-hero">
-    <div><p class="eyebrow">Challenge</p><h1>No Current Challenge</h1><p><?= (string) $crew['membership_role'] === 'OWNER' ? 'Build the competition your Crew will take on together.' : 'You do not currently participate in a Challenge for this Crew.' ?></p></div>
+    <div><p class="eyebrow fc-type-meta">Challenge</p><h1 class="fc-type-page-title">No Current Challenge</h1><p class="fc-type-body"><?= (string) $crew['membership_role'] === 'OWNER' ? 'Build the competition your Crew will take on together.' : 'You do not currently participate in a Challenge for this Crew.' ?></p></div>
     <span class="status-chip status-chip-neutral">No current Challenge</span>
 </section>
 <?php if ((string) $crew['membership_role'] === 'OWNER'): ?>
@@ -35,7 +35,7 @@ $lifecycleDescriptions = [
 ?>
 <?php require fc_path('views/app/challenge/subnav.php'); ?>
 <section class="product-hero challenge-hero">
-    <div><p class="eyebrow"><?= fc_e((string) $crew['display_name']) ?></p><h1><?= fc_e((string) $challenge['display_name']) ?></h1><p>Your competition. Your people. Your next step.</p></div>
+    <div><p class="eyebrow fc-type-meta"><?= fc_e((string) $crew['display_name']) ?></p><h1 class="fc-type-page-title"><?= fc_e((string) $challenge['display_name']) ?></h1><p class="fc-type-body">Your competition. Your people. Your next step.</p></div>
     <button
         class="lifecycle-badge lifecycle-badge-button"
         type="button"

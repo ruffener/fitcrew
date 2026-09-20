@@ -10,7 +10,7 @@
 <section class="split-card-grid">
     <article class="product-card product-card-accent-blue">
         <p class="card-kicker">Profile</p>
-        <h2><?= fc_e((string) ($currentUser['display_name'] ?: 'FitCrew member')) ?></h2>
+        <h2><?= fc_e((string) ($currentUser['display_name'] ?: 'FitCrew User')) ?></h2>
         <dl class="account-facts">
             <div><dt>Account reference</dt><dd class="account-id"><?= fc_e((string) ($currentUser['public_id'] ?? '')) ?></dd></div>
             <div><dt>Timezone</dt><dd><?= fc_e((string) ($currentUser['timezone'] ?: fc_config()['timezone'])) ?></dd></div>

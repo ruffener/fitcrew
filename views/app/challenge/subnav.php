@@ -5,5 +5,5 @@
     <span class="is-unavailable" aria-disabled="true">Standings <small>Unavailable</small></span>
     <span class="is-unavailable" aria-disabled="true">History <small>Unavailable</small></span>
     <a class="<?= ($challengeSection ?? '') === 'rules' ? 'is-current' : '' ?>" href="/rules.php?challenge=<?= fc_e($challengeQuery) ?>">Rules</a>
-    <a class="challenge-subnav-crew" href="/crew.php"><?= isset($crew['membership_role']) && (string) $crew['membership_role'] === 'OWNER' ? 'Manage Crew' : 'View Crew' ?></a>
+    <a class="challenge-subnav-crew" href="/crew.php?crew=<?= fc_e(rawurlencode((string) ($crew['public_id'] ?? ''))) ?>"><?= isset($crew['membership_role']) && (string) $crew['membership_role'] === 'OWNER' ? 'Manage Crew' : 'View Crew' ?></a>
 </nav>

@@ -21,9 +21,17 @@ $selectedChallenge = $appContext['challenge'] ?? null;
             <div class="sidebar-context-block">
                 <img src="/assets/img/brand/fitcrew-crew-mark-reference.png" alt="" aria-hidden="true">
                 <div>
-                    <p class="sidebar-label">Current Crew</p>
-                    <strong><?= $selectedCrew !== null ? fc_e((string) $selectedCrew['display_name']) : 'No Crew yet' ?></strong>
-                    <span><?= $selectedChallenge !== null ? fc_e((string) $selectedChallenge['display_name']) : 'No Challenge selected' ?></span>
+                    <p class="sidebar-label">Current context</p>
+                    <?php if ($selectedCrew !== null): ?>
+                        <a class="sidebar-context-link" href="/crew.php?crew=<?= fc_e(rawurlencode((string) $selectedCrew['public_id'])) ?>"><?= fc_e((string) $selectedCrew['display_name']) ?></a>
+                    <?php else: ?>
+                        <strong>No Crew yet</strong>
+                    <?php endif; ?>
+                    <?php if ($selectedChallenge !== null): ?>
+                        <a class="sidebar-context-link" href="/challenge.php?view=detail&amp;challenge=<?= fc_e(rawurlencode((string) $selectedChallenge['public_id'])) ?>"><?= fc_e((string) $selectedChallenge['display_name']) ?></a>
+                    <?php else: ?>
+                        <span>No Challenge selected</span>
+                    <?php endif; ?>
                 </div>
             </div>
 

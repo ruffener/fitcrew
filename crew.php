@@ -78,6 +78,16 @@ if (fc_is_post()) {
 
 $appContext = fc_product_context($pdo, $userId);
 $crew = $appContext['crew'];
+if (isset($_GET['crew']) && trim((string) $_GET['crew']) !== '') {
+    try {
+        $crew = fc_crew_require_public($pdo, $userId, (string) $_GET['crew']);
+        $appContext['crew'] = $crew;
+        $appContext['challenge'] = fc_crew_current_challenge($pdo, (int) $crew['id']);
+    } catch (DomainException) {
+        fc_response_code(404);
+        exit('Crew is unavailable.');
+    }
+}
 $currentChallenge = $crew !== null ? fc_crew_current_challenge($pdo, (int) $crew['id']) : null;
 $memberships = $crew !== null ? fc_crew_memberships($pdo, $userId, (int) $crew['id']) : [];
 $memberContactEmails = $crew !== null && (string) $crew['membership_role'] === 'OWNER'

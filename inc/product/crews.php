@@ -127,7 +127,7 @@ function fc_crew_membership_add_existing(PDO $pdo, int $actorUserId, int $crewId
 {
     fc_crew_require_owner($pdo, $actorUserId, $crewId);
     if (fc_user_find_by_id($pdo, $memberUserId, true) === null) {
-        throw new InvalidArgumentException('FitCrew member does not exist.');
+        throw new InvalidArgumentException('FitCrew User does not exist.');
     }
 
     fc_product_atomic($pdo, function () use ($pdo, $actorUserId, $crewId, $memberUserId): void {

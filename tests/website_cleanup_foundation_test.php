@@ -34,10 +34,9 @@ wcf_assert(str_contains($header, 'context-crew-link'), 'Current Crew must be dir
 wcf_assert(str_contains($subnav, 'Manage Crew'), 'Challenge navigation must offer direct Crew management for Owners.');
 wcf_assert(str_contains($crews, 'fc_crew_member_contact_email_map'), 'Owner-only verified contact email helper missing.');
 wcf_assert(str_contains($crews, "verification_status = 'VERIFIED'"), 'Member identity helper must use verified canonical contact email.');
-wcf_assert(str_contains($crewView, 'member-contact-email'), 'Crew Owner member cards must distinguish duplicate display names.');
-wcf_assert(str_contains($participantView, 'participant-contact-email'), 'Challenge Owner participant cards must distinguish duplicate display names.');
+wcf_assert(str_contains($participantView, 'people-email'), 'Canonical People surface must distinguish duplicate display names for the Crew Owner.');
 wcf_assert(str_contains($css, 'width: min(1180px, 100%);'), 'Desktop invitation width normalization missing.');
-wcf_assert(str_contains($crewView, 'The invitation itself verifies access to this email.'), 'Stale invitation authentication copy remains on Crew invite UI.');
+wcf_assert(str_contains($participantView, 'The invitation itself verifies access to this email.'), 'Current invitation authentication copy must live on the canonical People surface.');
 
 fwrite(STDOUT, "Website cleanup foundation proof: PASS\n");
 fwrite(STDOUT, "- account-conflict modal / safe account choices: PASS\n");

@@ -6,8 +6,8 @@ $welcomeName = $firstName !== '' ? $firstName : 'there';
 ?>
 <section class="product-hero product-hero-overview">
     <div>
-        <p class="eyebrow">Overview</p>
-        <h1>Good to see you, <?= fc_e($welcomeName) ?>.</h1>
+        <p class="eyebrow fc-type-meta">Overview</p>
+        <h1 class="fc-type-page-title">Good to see you, <?= fc_e($welcomeName) ?>.</h1>
         <?php if ($crew === null): ?>
             <p>FitCrew starts with your people. Create a private Crew, then build your first Challenge together.</p>
         <?php elseif ($challenge === null): ?>
@@ -38,7 +38,7 @@ $isCrewOwner = (string) $crew['membership_role'] === 'OWNER';
     <div class="overview-challenges-heading">
         <div>
             <p class="card-kicker">Your Challenges</p>
-            <h2 id="overview-challenges-title">Choose your competition.</h2>
+            <h2 class="fc-type-section-title" id="overview-challenges-title">Choose your competition.</h2>
             <p>Each Challenge keeps its own lifecycle, participation, rules, and results in one place.</p>
         </div>
     </div>
@@ -79,7 +79,7 @@ $isCrewOwner = (string) $crew['membership_role'] === 'OWNER';
                 ?>
                 <article class="overview-challenge-card">
                     <div class="overview-challenge-title">
-                        <h3><?= fc_e((string) $crewChallenge['display_name']) ?></h3>
+                        <h3 class="fc-type-card-title"><?= fc_e((string) $crewChallenge['display_name']) ?></h3>
                         <p><?= fc_e((string) $crew['display_name']) ?> · <?= fc_e((string) $crewChallenge['participant_count']) ?> active <?= (int) $crewChallenge['participant_count'] === 1 ? 'participant' : 'participants' ?></p>
                     </div>
 

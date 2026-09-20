@@ -45,9 +45,15 @@ foreach (['Your competitions.', 'Create New Challenge', 'fc-clickable-card', 'da
 }
 
 $crewView = file_get_contents($root . '/views/app/crew/home.php') ?: '';
-foreach (['Invite to Challenge', 'Pending invitations', 'Remove Crew Member', 'History will be preserved.', 'data-fitcrew-modal'] as $required) {
+foreach (['One Crew roster. Clear Challenge status.', 'Open People', '/participants.php?crew='] as $required) {
     if (!str_contains($crewView, $required)) {
-        throw new RuntimeException('Crew member management/modal contract is missing: ' . $required);
+        throw new RuntimeException('Crew → People convergence contract is missing: ' . $required);
+    }
+}
+$peopleView = file_get_contents($root . '/views/app/challenge/participants.php') ?: '';
+foreach (['Crew + Challenge state', 'Invite Someone New', 'Remove from Challenge', 'Remove from Crew', 'Not Yet Joined Current Challenge'] as $required) {
+    if (!str_contains($peopleView, $required)) {
+        throw new RuntimeException('Unified People surface contract is missing: ' . $required);
     }
 }
 
@@ -55,8 +61,8 @@ $accountView = file_get_contents($root . '/views/app/account.php') ?: '';
 if (str_contains($crewView, 'name="member_public_id" maxlength="26"') || str_contains($crewView, '>Add Member<')) {
     throw new RuntimeException('Normal Member-ID enrollment must remain retired.');
 }
-if (!str_contains($crewView, 'name="email"') || !str_contains($crewView, 'Send Challenge Invitation')) {
-    throw new RuntimeException('Challenge invitation UI must use email delivery and explicit pending acceptance.');
+if (!str_contains($peopleView, 'name="email"') || !str_contains($peopleView, 'Send Challenge Invitation')) {
+    throw new RuntimeException('Canonical People surface must use email delivery and explicit pending acceptance.');
 }
 if (str_contains($accountView, 'Share your Member ID')) {
     throw new RuntimeException('Account still instructs direct membership enrollment.');
@@ -158,7 +164,7 @@ fwrite(STDOUT, "- mobile navigation / focus-visible accessibility foundation: PA
 fwrite(STDOUT, "- Challenge setup end-date/duration choice + Rules handoff: PASS\n");
 fwrite(STDOUT, "- Overview Start here helper cue: PASS\n");
 fwrite(STDOUT, "- Overview Challenge-first hierarchy + per-Challenge status: PASS\n");
-fwrite(STDOUT, "- Crew selection + history-preserving removal / retired Member-ID enrollment: PASS\n");
+fwrite(STDOUT, "- Crew → People convergence + history-preserving removal / retired Member-ID enrollment: PASS\n");
 fwrite(STDOUT, "- Challenge list/detail routing + Owner management / personal history entry: PASS\n");
 fwrite(STDOUT, "- FitCrew clickable-card / action-tile interaction standard: PASS\n");
 fwrite(STDOUT, "- Challenge list Create New Challenge placement + whole-card navigation: PASS\n");

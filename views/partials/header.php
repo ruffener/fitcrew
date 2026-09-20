@@ -28,7 +28,7 @@ $headerDisplayName = $headerCurrentUser !== null
             <div class="app-header-context" aria-label="Current FitCrew context">
                 <span class="context-label">Current context</span>
                 <?php if (isset($appContext['crew']) && $appContext['crew'] !== null): ?>
-                    <a class="context-crew-link" href="/crew.php"><?= fc_e((string) $appContext['crew']['display_name']) ?></a>
+                    <a class="context-crew-link" href="/crew.php?crew=<?= fc_e(rawurlencode((string) $appContext['crew']['public_id'])) ?>"><?= fc_e((string) $appContext['crew']['display_name']) ?></a>
                 <?php else: ?>
                     <strong>No Crew yet</strong>
                 <?php endif; ?>

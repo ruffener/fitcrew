@@ -4278,3 +4278,366 @@ body.fc-modal-open {
     .invitation-account-choice-summary { grid-template-columns: 1fr; }
     .challenge-subnav .challenge-subnav-crew { margin-left: 0; }
 }
+
+/* ========================================================================== */
+/* FitCrew UI Foundation v1 — canonical shared scale + Website normalization. */
+/* ========================================================================== */
+:root {
+    /* Typography roles */
+    --fc-type-display: clamp(3rem, 6vw, 5.6rem);
+    --fc-type-page-title: clamp(2.35rem, 4vw, 3.65rem);
+    --fc-type-section-title: clamp(1.35rem, 2vw, 1.65rem);
+    --fc-type-card-title: 1.125rem;
+    --fc-type-body: 1rem;
+    --fc-type-supporting: 0.875rem;
+    --fc-type-meta: 0.8125rem;
+    --fc-type-micro: 0.6875rem;
+
+    /* Compatibility aliases retained for invitation-era Foundation roles. */
+    --fc-type-title: var(--fc-type-page-title);
+    --fc-type-section: var(--fc-type-section-title);
+    --fc-type-support: var(--fc-type-supporting);
+
+    /* Canonical spacing scale: 4 / 8 / 12 / 16 / 24 / 32 / 48px. */
+    --fc-space-1: 4px;
+    --fc-space-2: 8px;
+    --fc-space-3: 12px;
+    --fc-space-4: 16px;
+    --fc-space-6: 24px;
+    --fc-space-8: 32px;
+    --fc-space-12: 48px;
+
+    /* Canonical radius scale. */
+    --fc-radius-control: 10px;
+    --fc-radius-notice: 14px;
+    --fc-radius-card: 18px;
+    --fc-radius-shell: 24px;
+    --fc-radius-pill: 999px;
+
+    /* Canonical control/touch scale. */
+    --fc-control-button: 46px;
+    --fc-control-input: 48px;
+    --fc-control-touch: 44px;
+    --fc-control-icon: 44px;
+    --fc-control-provider: 64px;
+
+    --fc-focus-outline: 3px solid #1e40af;
+    --fc-focus-offset: 3px;
+}
+
+/* Semantic typography roles. */
+.fc-type-display {
+    font-family: var(--font-display);
+    font-size: var(--fc-type-display);
+    font-weight: 400;
+    line-height: 0.92;
+    letter-spacing: 0.015em;
+}
+
+.fc-type-page-title,
+.fc-ui-title {
+    font-family: var(--font-display);
+    font-size: var(--fc-type-page-title);
+    font-weight: 400;
+    line-height: 0.98;
+    letter-spacing: 0.015em;
+}
+
+.fc-type-section-title,
+.fc-ui-section-title {
+    font-size: var(--fc-type-section-title);
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.fc-type-card-title {
+    font-size: var(--fc-type-card-title);
+    font-weight: 800;
+    line-height: 1.3;
+}
+
+.fc-type-body,
+.fc-ui-body {
+    font-size: var(--fc-type-body);
+    line-height: 1.65;
+}
+
+.fc-type-supporting,
+.fc-ui-help {
+    font-size: var(--fc-type-supporting);
+    line-height: 1.55;
+}
+
+.fc-type-meta,
+.fc-ui-eyebrow {
+    font-size: var(--fc-type-meta);
+    line-height: 1.45;
+}
+
+.fc-type-micro {
+    font-size: var(--fc-type-micro);
+    line-height: 1.4;
+}
+
+/* Shared component primitives and compatibility aliases. */
+.fc-card-standard,
+.product-card,
+.overview-challenge-card,
+.member-card,
+.participant-row,
+.challenge-row {
+    border-radius: var(--fc-radius-card);
+}
+
+.fc-card-clickable,
+.fc-clickable-card,
+.fc-action-tile {
+    border-radius: var(--fc-radius-card);
+}
+
+.fc-notice,
+.family-notice,
+.inline-empty-state {
+    border-radius: var(--fc-radius-notice);
+}
+
+.status-chip {
+    border-radius: var(--fc-radius-pill);
+    font-size: var(--fc-type-meta);
+    line-height: 1.2;
+}
+
+.button,
+button.button {
+    min-height: var(--fc-control-button);
+    border-radius: var(--fc-radius-control);
+    font-size: var(--fc-type-supporting);
+}
+
+.button-small {
+    min-height: var(--fc-control-touch);
+    padding: 0.62rem 0.9rem;
+    font-size: var(--fc-type-supporting);
+}
+
+.product-form label,
+.fc-ui-fieldset label {
+    font-size: var(--fc-type-supporting);
+}
+
+.product-form label > span,
+.form-help,
+.checkbox-field span small {
+    font-size: var(--fc-type-supporting);
+    line-height: 1.5;
+}
+
+.product-form input[type="text"],
+.product-form input[type="email"],
+.product-form input[type="date"],
+.product-form input[type="number"],
+.product-form input[type="password"],
+.product-form textarea,
+.product-form select,
+.fc-ui-fieldset input,
+.fc-ui-fieldset select,
+.fc-ui-fieldset textarea {
+    min-height: var(--fc-control-input);
+    border-radius: var(--fc-radius-control);
+}
+
+/* One visible focus language across Website-owned controls. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[role="button"]:focus-visible {
+    outline: var(--fc-focus-outline);
+    outline-offset: var(--fc-focus-offset);
+    box-shadow: none;
+}
+
+/* Shared header + navigation scale. */
+.site-header-inner { min-height: 70px; }
+.brand-lockup-mark {
+    width: 44px;
+    height: 44px;
+    flex-basis: 44px;
+    border-radius: var(--fc-radius-control);
+}
+
+.site-nav,
+.sidebar-nav a,
+.sidebar-secondary a,
+.sidebar-secondary button,
+.challenge-subnav a,
+.challenge-subnav .is-unavailable,
+.mobile-app-nav a,
+.mobile-app-nav button { font-size: 0.875rem; }
+
+.sidebar-nav a,
+.sidebar-secondary a,
+.sidebar-secondary button,
+.challenge-subnav a,
+.challenge-subnav .is-unavailable,
+.mobile-app-nav a,
+.mobile-app-nav button { min-height: var(--fc-control-touch); }
+
+.context-label,
+.sidebar-label,
+.context-kicker { font-size: var(--fc-type-meta); }
+
+.app-header-context .context-crew-link,
+.app-header-context .context-challenge-link,
+.sidebar-context-link { font-size: 0.875rem; }
+
+.sidebar-context-link {
+    display: block;
+    overflow: hidden;
+    max-width: 150px;
+    color: var(--fc-deep-navy);
+    font-weight: 800;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sidebar-context-link + .sidebar-context-link { margin-top: 0.2rem; color: var(--fc-text-muted); font-weight: 700; }
+.sidebar-context-link:hover,
+.sidebar-context-link:focus-visible { color: var(--fc-royal-blue); text-decoration: underline; text-underline-offset: 0.16rem; }
+
+/* Representative application normalization. */
+.product-hero,
+.app-sidebar,
+.app-content,
+.fc-modal,
+.fc-modal-panel { border-radius: var(--fc-radius-shell); }
+
+.product-hero h1 { font-size: var(--fc-type-page-title); line-height: 0.98; }
+.product-hero p:not(.eyebrow),
+.product-card p,
+.empty-state-feature p,
+.status-action-card p,
+.overview-challenges-heading p,
+.challenge-row p,
+.inline-empty-state span,
+.participant-main span,
+.member-card span,
+.quiet-action span,
+.family-pending-row span { font-size: var(--fc-type-supporting); line-height: 1.55; }
+
+.section-bar h2,
+.empty-state-feature h2,
+.product-card h2,
+.status-action-card h2 { font-size: var(--fc-type-section-title); line-height: 1.2; }
+
+.overview-challenge-title h3,
+.challenge-row h3,
+.member-card strong,
+.participant-main strong,
+.family-pending-row strong { font-size: var(--fc-type-card-title); }
+
+.card-kicker,
+.metric-label,
+.challenge-action-button > span,
+.member-contact-email,
+.participant-contact-email { font-size: var(--fc-type-meta) !important; }
+
+.challenge-action-button {
+    min-height: 124px;
+    padding: var(--fc-space-4) 3.2rem var(--fc-space-4) var(--fc-space-4);
+    border-radius: var(--fc-radius-card);
+}
+.challenge-action-button > strong { font-size: var(--fc-type-card-title); }
+.challenge-action-button > small { font-size: var(--fc-type-supporting); line-height: 1.45; }
+.challenge-subnav { gap: var(--fc-space-2); padding: var(--fc-space-2); border-radius: var(--fc-radius-notice); }
+.challenge-subnav small { font-size: var(--fc-type-micro); }
+
+/* Unified Crew / Challenge People surface. */
+.people-summary-grid {
+    margin-top: var(--fc-space-4);
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--fc-space-3);
+}
+.people-summary-card {
+    padding: var(--fc-space-4);
+    display: grid;
+    gap: var(--fc-space-1);
+    border: 1px solid var(--fc-border);
+    border-radius: var(--fc-radius-card);
+    background: var(--fc-surface-soft);
+}
+.people-summary-card span { color: var(--fc-text-muted); font-size: var(--fc-type-meta); font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
+.people-summary-card strong { color: var(--fc-deep-navy); font-size: var(--fc-type-section-title); }
+.people-toolbar { margin-top: var(--fc-space-4); display: flex; flex-wrap: wrap; align-items: center; gap: var(--fc-space-3); }
+.people-toolbar .people-toolbar-spacer { flex: 1 1 auto; }
+.people-list { margin-top: var(--fc-space-4); display: grid; gap: var(--fc-space-3); }
+.people-row {
+    padding: var(--fc-space-4);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: var(--fc-space-3);
+    align-items: center;
+    border: 1px solid var(--fc-border);
+    border-radius: var(--fc-radius-card);
+    background: var(--fc-white);
+}
+.people-row.is-historical { background: var(--fc-surface-soft); }
+.people-identity { min-width: 0; display: grid; gap: var(--fc-space-1); }
+.people-identity strong { color: var(--fc-deep-navy); font-size: var(--fc-type-card-title); }
+.people-identity .people-email,
+.people-identity .people-state-copy { overflow-wrap: anywhere; color: var(--fc-text-muted); font-size: var(--fc-type-supporting); }
+.people-state-chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--fc-space-2); }
+.people-actions { grid-column: 2 / -1; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--fc-space-2); }
+.people-pending-list { display: grid; gap: var(--fc-space-3); }
+.people-pending-row {
+    padding: var(--fc-space-4);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--fc-space-3);
+    border: 1px solid var(--fc-border);
+    border-radius: var(--fc-radius-card);
+    background: var(--fc-surface-soft);
+}
+.people-pending-copy { min-width: 0; display: grid; gap: var(--fc-space-1); }
+.people-pending-copy strong { overflow-wrap: anywhere; font-size: var(--fc-type-card-title); }
+.people-pending-copy span,
+.people-pending-copy small { color: var(--fc-text-muted); font-size: var(--fc-type-supporting); line-height: 1.5; }
+.crew-people-card {
+    margin-top: var(--fc-space-4);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--fc-space-4);
+    align-items: center;
+}
+.crew-people-card-copy { display: grid; gap: var(--fc-space-2); }
+.crew-people-card-copy p { margin: 0; }
+
+@media (max-width: 760px) {
+    .brand-lockup-mark { width: 38px; height: 38px; flex-basis: 38px; }
+    .site-header-inner { min-height: 68px; }
+    .mobile-app-nav { min-height: 70px; height: auto; }
+    .mobile-app-nav small { font-size: 0.875rem; }
+    .people-summary-grid,
+    .crew-people-card { grid-template-columns: 1fr; }
+    .people-row { grid-template-columns: auto minmax(0, 1fr); }
+    .people-state-chips,
+    .people-actions { grid-column: 1 / -1; justify-content: flex-start; }
+    .people-toolbar .button,
+    .people-toolbar form,
+    .people-actions .button,
+    .people-actions form { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
