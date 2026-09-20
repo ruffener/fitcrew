@@ -22,11 +22,12 @@ cijc_assert(str_contains($ch,'fc_crew_current_challenge(') && str_contains($ch,"
 cijc_assert(str_contains($inv,'fc_auth_account_presence_for_email($pdo, $email)'),'Private account-presence lookup missing.');
 cijc_assert(!str_contains($crew,'account_presence'),'Inviter-facing controller must not expose account-presence classification.');
 cijc_assert(str_contains($controller,'fc_challenge_invitation_intent_create('),'Accept Challenge must create Website acceptance intent.');
-cijc_assert(str_contains($controller,'fc_invitation_try_complete('),'Post-auth flow must automatically resume accepted intent.');
+cijc_assert(str_contains($controller,'fc_invitation_complete_email_proof('),'Accept Challenge must authenticate and enroll through the invitation EMAIL proof.');
+cijc_assert(str_contains($controller,"fc_redirect('/app.php')"),'Successful invitation enrollment must finish at Overview.');
 cijc_assert(str_contains($ci,'fc_challenge_invitation_intent_resume_for_invitation('),'Account switch/session reset must preserve accepted product intent server-side.');
 cijc_assert(str_contains($ci,'fc_challenge_accept_participation_locked('),'Final journey must reuse Challenge acceptance engine.');
 cijc_assert(str_contains($ci,'fc_product_context_persist('),'Final enrollment must select the exact Crew and Challenge.');
-foreach(['Challenge Invitation','Rules &amp; scoring','Health comes later.','Privacy choices','Accept Challenge','Use a different account'] as $needle)cijc_assert(str_contains($view,$needle),'Public Challenge review missing '.$needle);
+foreach(['Challenge Invitation','Rules &amp; scoring','Health comes later.','Privacy choices','Accept Challenge','Use a different FitCrew account'] as $needle)cijc_assert(str_contains($view,$needle),'Public Challenge review missing '.$needle);
 foreach(['participant_count','raw_health','provider_payload'] as $forbidden)cijc_assert(!str_contains(strtolower($view),$forbidden),'Public invitation view exposes protected data concept: '.$forbidden);
 
 fwrite(STDOUT,"Challenge invitation journey contract proof: PASS\n- database-backed current-Challenge authority / legacy preservation: PASS\n- Challenge-scoped invitation / private account-presence copy: PASS\n- pre-auth review / one explicit acceptance / account switch: PASS\n- server-side intent / atomic enrollment reuse / selected context: PASS\n");

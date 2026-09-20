@@ -42,3 +42,31 @@ The accepted synchronized SQL snapshot was reviewed before the 0500 design:
 - No historical Challenge row is deleted or reassigned by the migration.
 
 The first post-deployment production proof must use a newly-created Challenge-scoped invitation, not any legacy Crew-only row.
+
+## Invitation EMAIL authentication simplification (September 19, 2026)
+
+The Challenge invitation email is now the default EMAIL authentication proof for
+that invitation generation. Fresh issuance/resend registers the same high-entropy
+invitation bearer with Auth before Postmark transport and sends it only in a URL
+fragment (`/crew-invite.php#token=...`).
+
+Opening the link does not authenticate, create an account, consume the invitation,
+or enroll anyone. The browser removes the fragment from history before normal
+resources load and exchanges it through a protected same-origin POST. The clean
+Challenge review identifies the recipient email.
+
+The participant still makes exactly one product decision: **Accept Challenge**.
+On that POST, Website preserves the exact acceptance intent and, inside the final
+caller-owned enrollment transaction, asks Auth to resolve/create the canonical
+EMAIL account and establish the session. Website enrolls the exact `user_id`
+returned by Auth, commits Crew membership + Challenge participation + consent +
+selected context atomically, and then redirects to `/app.php` (Overview).
+
+If the email is new, Auth returns `invitation_email_profile_required`; Website
+collects only the required display name and resumes the same already accepted
+intent without a second Challenge acceptance. If the participant already has a
+FitCrew account under another email, the explicit ordinary account-switch path
+remains available through the existing Auth continuation contract.
+
+Existing pre-integration invitation links are not silently upgraded into EMAIL
+login credentials. The Crew Owner must resend/create a fresh invitation generation.

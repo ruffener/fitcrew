@@ -10,14 +10,14 @@ require_once dirname(__DIR__) . '/inc/mail/templates/crew_invitation.php';
 function mail_assert(bool $ok,string $message):void { if(!$ok) throw new RuntimeException($message); }
 $_ENV['MAIL_DRIVER']='postmark';
 $_ENV['POSTMARK_SERVER_TOKEN']='test-secret-never-log';
-$msg=fc_mail_validate(fc_mail_crew_invitation_message('invitee@example.com','Brad Ruffener','Ruffener Crew','Fall Challenge','UNKNOWN','https://fitcrewchallenge.com/crew-invite.php?token=secret-token'));
+$msg=fc_mail_validate(fc_mail_crew_invitation_message('invitee@example.com','Brad Ruffener','Ruffener Crew','Fall Challenge','UNKNOWN','https://fitcrewchallenge.com/crew-invite.php#token=secret-token'));
 mail_assert($msg['from_name']==='Brad via FitCrew Challenge','Canonical From Name mismatch.');
 mail_assert($msg['from_email']==='hello@fitcrewchallenge.com','Canonical From address mismatch.');
 mail_assert($msg['reply_to']==='hello@fitcrewchallenge.com','Canonical Reply-To mismatch.');
 mail_assert($msg['subject']==='Brad invited you to Fall Challenge','Canonical Challenge invitation subject mismatch.');
 mail_assert(str_contains($msg['text_body'],"If you’re new to FitCrew"),'UNKNOWN account-presence copy must remain neutral.');
 mail_assert(str_contains($msg['text_body'],'secret-token') && str_contains($msg['html_body'],'secret-token'),'Both message representations must contain the invitation destination.');
-$known=fc_mail_validate(fc_mail_crew_invitation_message('known@example.com','Brad Ruffener','Ruffener Crew','Fall Challenge','KNOWN_ACCOUNT','https://fitcrewchallenge.com/crew-invite.php?token=known-token'));
+$known=fc_mail_validate(fc_mail_crew_invitation_message('known@example.com','Brad Ruffener','Ruffener Crew','Fall Challenge','KNOWN_ACCOUNT','https://fitcrewchallenge.com/crew-invite.php#token=known-token'));
 mail_assert(str_contains($known['text_body'],'already have a FitCrew account'),'KNOWN_ACCOUNT copy may acknowledge existing FitCrew.');
 mail_assert(!str_contains($msg['text_body'],'do not have a FitCrew account'),'UNKNOWN copy must never assert account absence.');
 $seen=[];

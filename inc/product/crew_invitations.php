@@ -331,10 +331,17 @@ function fc_crew_invitation_find_token(PDO $pdo, string $token): ?array
 /** @param array<string,mixed> $invitation
  *  @return array{accepted:bool,driver:string,message_id:?string}
  */
-function fc_crew_invitation_send_message(array $invitation): array
+function fc_crew_invitation_send_message(PDO $pdo, array $invitation): array
 {
-    $baseUrl = rtrim((string) fc_config()['url'], '/');
-    $acceptUrl = $baseUrl . '/crew-invite.php?token=' . rawurlencode((string) $invitation['token']);
+    if ($pdo->inTransaction()) {
+        throw new LogicException('Invitation email proof registration must commit before transport begins.');
+    }
+    $acceptUrl = fc_auth_invitation_email_register(
+        $pdo,
+        (string) ($invitation['public_id'] ?? ''),
+        (int) ($invitation['generation'] ?? -1),
+        (string) ($invitation['token'] ?? '')
+    );
     $message = fc_mail_crew_invitation_message(
         (string) $invitation['email'],
         (string) $invitation['inviter_name'],
@@ -363,6 +370,16 @@ function fc_crew_invitation_deliver(PDO $pdo, array $invitation, ?callable $send
         throw new InvalidArgumentException('Invitation delivery evidence is incomplete.');
     }
 
+    if ($pdo->inTransaction()) {
+        throw new LogicException('Invitation delivery must begin after issuance and proof registration are committed.');
+    }
+    $acceptUrl = fc_auth_invitation_email_register(
+        $pdo,
+        $publicId,
+        $generation,
+        (string) ($invitation['token'] ?? '')
+    );
+
     $driver=(string)(fc_mail_config()['driver'] ?? '');
     $attempt=$pdo->prepare(
         'UPDATE crew_invitations SET transport_status=\'PENDING_SEND\',transport_driver=:driver,' .
@@ -375,8 +392,6 @@ function fc_crew_invitation_deliver(PDO $pdo, array $invitation, ?callable $send
     }
 
     $sender ??= static fn(array $message): array => fc_mail_send($message);
-    $baseUrl = rtrim((string) fc_config()['url'], '/');
-    $acceptUrl = $baseUrl . '/crew-invite.php?token=' . rawurlencode((string) $invitation['token']);
     $message = fc_mail_crew_invitation_message(
         (string) $invitation['email'],
         (string) $invitation['inviter_name'],

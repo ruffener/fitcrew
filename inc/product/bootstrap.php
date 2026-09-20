@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/mail/mail.php';
 require_once dirname(__DIR__) . '/mail/templates/crew_invitation.php';
+require_once dirname(__DIR__) . '/auth/invitation_email.php';
 require_once __DIR__ . '/contracts.php';
 require_once __DIR__ . '/transaction.php';
 require_once __DIR__ . '/authorization.php';

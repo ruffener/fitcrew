@@ -12,10 +12,11 @@ $view=file_get_contents($root.'/views/public/crew_invitation.php') ?: '';
 $migration=file_get_contents($root.'/database/migrations/0320_crew_invitation_delivery_truth.sql') ?: '';
 
 p3_assert(str_contains($landing,"header('Referrer-Policy: no-referrer')"),'Raw-token landing must send no-referrer.');
-p3_assert(str_contains($landing,'fc_challenge_invitation_review_session_set('),'Raw invitation must exchange into Website review state.');
-p3_assert(str_contains($landing,"fc_redirect('/crew-invite.php')"),'Raw invitation must leave token-bearing URL.');
-p3_assert(str_contains($landing,'fc_auth_crew_invitation_continuation_issue('),'Signed-out accepted intent must issue Auth continuation.');
-p3_assert(str_contains($landing,'fc_auth_crew_invitation_continuation_current($pdo)'),'Post-auth flow must consume minimal Auth continuation evidence.');
+p3_assert(str_contains($service,'fc_auth_invitation_email_register('),'Fresh delivery must register the invitation bearer for EMAIL authentication.');
+p3_assert(str_contains($landing,'history.replaceState'),'Fragment invitation bearer must leave browser history immediately.');
+p3_assert(str_contains($landing,'fc_auth_invitation_email_capture('),'Fragment bearer must exchange through Auth capture.');
+p3_assert(str_contains($landing,'fc_auth_invitation_email_complete('),'Explicit acceptance must authenticate through the invitation EMAIL proof.');
+p3_assert(str_contains($landing,'fc_auth_crew_invitation_continuation_current($pdo)'),'Explicit different-account flow must retain minimal Auth continuation evidence.');
 p3_assert(!str_contains($view,'name="token"'),'Ordinary acceptance form must not carry raw invitation token.');
 p3_assert(str_contains($view,'Accept Challenge'),'Explicit Challenge acceptance must remain required.');
 p3_assert(str_contains($journey,'fc_crew_invitation_auth_snapshot('),'Final Website validator missing.');
@@ -36,4 +37,4 @@ foreach (['PENDING_SEND','TRANSPORT_ACCEPTED','TRANSPORT_FAILED','transport_driv
 p3_assert(str_contains($service,'TRANSPORT_FAILED') && str_contains($service,'TRANSPORT_ACCEPTED') && str_contains($service,'transport_message_id=:message_id'),'Transport truth recording missing.');
 p3_assert(!str_contains($landing,'email_at_provider') && !str_contains($service,'email_at_provider'),'Provider email comparison must remain absent.');
 
-fwrite(STDOUT,"Crew invitation PASS 3 contract proof: PASS\n- Raw token one-time exchange / pre-auth review / clean continuation flow: PASS\n- Explicit atomic Challenge acceptance / no provider-email identity: PASS\n- Delivery truth semantics: PASS\n- Invitation rate-limit policies/call sites: PASS\n");
+fwrite(STDOUT,"Crew invitation PASS 3 contract proof: PASS\n- Fragment proof capture / pre-auth review / direct EMAIL authentication: PASS\n- Explicit atomic Challenge acceptance / no provider-email identity: PASS\n- Delivery truth semantics: PASS\n- Invitation rate-limit policies/call sites: PASS\n");

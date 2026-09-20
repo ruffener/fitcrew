@@ -97,7 +97,7 @@ function fc_challenge_invitation_review(PDO $pdo, string $invitationPublicId, in
 
     $sql =
         'SELECT i.id AS invitation_id,i.public_id AS invitation_public_id,i.crew_id,i.challenge_id,' .
-        'i.resend_count AS generation,i.expires_at,i.invited_by_user_id,' .
+        'i.resend_count AS generation,i.expires_at,i.invited_by_user_id,i.invited_email,' .
         'cr.public_id AS crew_public_id,cr.display_name AS crew_name,cr.description AS crew_description,' .
         'c.public_id AS challenge_public_id,c.display_name AS challenge_name,c.lifecycle_status,c.operational_state,' .
         'u.display_name AS inviter_name,' .

@@ -20,8 +20,8 @@ function fc_mail_crew_invitation_message(
     $subject = $firstName . ' invited you to ' . ($challengeName !== '' ? $challengeName : $crewName);
 
     $accountLine = $accountPresence === 'KNOWN_ACCOUNT'
-        ? 'You already have a FitCrew account. Review the Challenge, then choose the account you want to use.'
-        : 'If you’re new to FitCrew, you’ll be able to create an account after reviewing the Challenge.';
+        ? 'You already have a FitCrew account. This invitation can sign you in with this email after you accept the Challenge.'
+        : 'If you’re new to FitCrew, this invitation verifies your email and FitCrew will ask only for the account details still required after you accept the Challenge.';
 
     $text = $firstName . ' invited you to ' . $challengeName . ' with ' . $crewName . " on FitCrew Challenge.\n\n" .
         "Review the Challenge before you decide:\n" . $acceptUrl . "\n\n" .
