@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/email_accounts.php';
+
 require_once __DIR__ . '/invitation_continuations.php';
 require_once fc_path('inc/mail/mail.php');
 
@@ -621,102 +623,25 @@ function fc_email_magic_link_complete(
         }
 
         $emailSubject = (string) $challenge['email_subject'];
-        $identity = fc_auth_identity_find_oidc(
-            $pdo,
-            'EMAIL',
-            FC_EMAIL_MAGIC_LINK_ISSUER,
-            $emailSubject,
-            true
-        );
-        $newAccount = false;
-        $verifiedOwner = fc_contact_email_find_verified_owner($pdo, $emailSubject, true);
-
-        if ($identity !== null || $verifiedOwner !== null) {
-            if ($identity !== null && $verifiedOwner !== null
-                && (int) $verifiedOwner['user_id'] !== (int) $identity['user_id']) {
-                throw new DomainException('account_reconciliation_required');
-            }
-            if ($identity !== null && (string) $identity['identity_status'] !== 'ACTIVE') {
-                throw new DomainException('fitcrew_account_access_denied');
-            }
-            // The completed mailbox proof may use the unique canonical VERIFIED
-            // owner. A descriptive provider email alone never selects an account.
-            $userId = (int) ($identity['user_id'] ?? $verifiedOwner['user_id']);
-            $user = fc_user_find_by_id($pdo, $userId, true);
-            if ($user === null || (string) $user['account_status'] !== 'ACTIVE') {
-                throw new DomainException('fitcrew_account_access_denied');
-            }
-            if ($invitationContinuation !== null) {
-                $snapshot = fc_auth_crew_invitation_product_snapshot(
-                    $pdo,
-                    (string) $invitationContinuation['invitation_public_id'],
-                    (int) $invitationContinuation['invitation_generation'],
-                    false
-                );
-                if ($snapshot === null) {
-                    throw new DomainException('invitation_continuation_product_invalid');
-                }
-            }
-        } else {
-            if (fc_auth_identity_email_evidence_owners($pdo, $emailSubject) !== []) {
-                throw new DomainException('account_reconciliation_required');
-            }
-            if ($invitationContinuation === null) {
-                throw new DomainException('prelaunch_new_account_denied');
-            }
-            $snapshot = fc_auth_crew_invitation_product_snapshot(
-                $pdo,
-                (string) $invitationContinuation['invitation_public_id'],
-                (int) $invitationContinuation['invitation_generation'],
-                true
-            );
-            if ($snapshot === null) {
-                throw new DomainException('prelaunch_invitation_denied');
-            }
+        if ($invitationContinuation !== null && fc_auth_crew_invitation_product_snapshot(
+            $pdo, (string) $invitationContinuation['invitation_public_id'],
+            (int) $invitationContinuation['invitation_generation'], false
+        ) === null) {
+            throw new DomainException('invitation_continuation_product_invalid');
+        }
+        $admission = $invitationContinuation === null ? null : static function () use ($pdo, $invitationContinuation): void {
+            if (fc_auth_crew_invitation_product_snapshot(
+                $pdo, (string) $invitationContinuation['invitation_public_id'],
+                (int) $invitationContinuation['invitation_generation'], true
+            ) === null) throw new DomainException('prelaunch_invitation_denied');
             fc_auth_crew_invitation_admission_claim(
-                $pdo,
-                (int) $invitationContinuation['id'],
-                (string) $invitationContinuation['invitation_public_id']
+                $pdo, (int) $invitationContinuation['id'], (string) $invitationContinuation['invitation_public_id']
             );
-            $created = fc_user_create($pdo, null, 'ACTIVE', 'USER');
-            $user = fc_user_find_by_id($pdo, (int) $created['id'], true);
-            if ($user === null) {
-                throw new RuntimeException('Unable to load newly created FitCrew user.');
-            }
-            $newAccount = true;
-            fc_audit_event_write($pdo, [
-                'actor_user_id' => (int) $user['id'],
-                'event_type' => 'ACCOUNT_CREATED_EMAIL',
-                'target_type' => 'USER',
-                'target_id' => (string) $user['public_id'],
-                'outcome' => 'SUCCESS',
-                'metadata' => ['provider' => 'EMAIL'],
-            ]);
-        }
-
-        if ($identity === null) {
-            $createdIdentity = fc_auth_identity_create($pdo, (int) $user['id'], [
-                'provider_key' => 'EMAIL',
-                'issuer' => FC_EMAIL_MAGIC_LINK_ISSUER,
-                'provider_subject' => $emailSubject,
-                'email_at_provider' => $emailSubject,
-                'provider_email_verified' => 1,
-                'email_verification_observed_at' => new DateTimeImmutable('now', new DateTimeZone('UTC')),
-                'identity_status' => 'ACTIVE',
-            ]);
-            $identity = fc_auth_identity_find_oidc(
-                $pdo, 'EMAIL', FC_EMAIL_MAGIC_LINK_ISSUER, $emailSubject, true
-            );
-            if ($identity === null || (int) $identity['id'] !== (int) $createdIdentity['id']) {
-                throw new RuntimeException('Unable to load newly created EMAIL identity.');
-            }
-        }
-
-        fc_auth_identity_update_provider_claims($pdo, (int) $identity['id'], [
-            'email_at_provider' => $emailSubject,
-            'provider_email_verified' => 1,
-        ]);
-        fc_email_magic_link_ensure_verified_contact($pdo, (int) $user['id'], $emailSubject);
+        };
+        $account = fc_email_account_resolve_verified_mailbox($pdo, $emailSubject, $admission);
+        $user = $account['user'];
+        $identity = $account['identity'];
+        $newAccount = $account['new_account'];
 
         $sessionRecord = fc_session_record_create_with_policy(
             $pdo,

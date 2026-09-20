@@ -26,6 +26,7 @@ try {
     $migration = $readSource($root . '/database/migrations/0330_add_email_magic_link_authentication.sql');
     $uniquenessMigration = $readSource($root . '/database/migrations/0340_enforce_verified_email_uniqueness.sql');
     $service = $readSource($root . '/inc/auth/email_magic_link.php');
+    $resolver = $readSource($root . '/inc/auth/email_accounts.php');
     $continuations = $readSource($root . '/inc/auth/invitation_continuations.php');
     $request = $readSource($root . '/auth/email/request.php');
     $confirm = $readSource($root . '/auth/email/confirm.php');
@@ -208,24 +209,25 @@ try {
         'Magic-link delivery does not consume the existing mail contract.'
     );
     emlu_assert(
-        str_contains($service, "fc_auth_identity_find_oidc(\n            \$pdo,\n            'EMAIL'")
-            && !preg_match('/find_oidc\([^;]*GOOGLE[^;]*email/si', $service),
+        str_contains($service, 'fc_email_account_resolve_verified_mailbox(')
+            && preg_match('/fc_auth_identity_find_oidc\(\s*\$pdo,\s*\x27EMAIL\x27/', $resolver)
+            && !preg_match('/find_oidc\([^;]*GOOGLE[^;]*email/si', $resolver),
         'EMAIL identity resolution is not isolated from federated-provider email.'
     );
     emlu_assert(
-        strpos($service, 'fc_auth_crew_invitation_admission_claim(')
-            < strpos($service, '$created = fc_user_create('),
+        str_contains($service, 'fc_auth_crew_invitation_admission_claim(')
+            && strpos($resolver, '$admitNewAccount();') < strpos($resolver, '$created = fc_user_create('),
         'Invitation admission is not claimed before EMAIL account creation.'
     );
     emlu_assert(
-        str_contains($service, "throw new DomainException('prelaunch_new_account_denied')")
-            && str_contains($service, "'EMAIL',\n            FC_EMAIL_MAGIC_LINK_ISSUER"),
+        str_contains($resolver, "throw new DomainException('prelaunch_new_account_denied')")
+            && str_contains($resolver, 'FC_EMAIL_MAGIC_LINK_ISSUER'),
         'Unknown EMAIL identities are not held behind invitation admission.'
     );
     emlu_assert(
-        str_contains($service, 'fc_contact_email_find_verified_owner(')
-            && str_contains($service, 'fc_auth_identity_email_evidence_owners(')
-            && str_contains($service, "throw new DomainException('account_reconciliation_required')"),
+        str_contains($resolver, 'fc_contact_email_find_verified_owner(')
+            && str_contains($resolver, 'fc_auth_identity_email_evidence_owners(')
+            && str_contains($resolver, "throw new DomainException('account_reconciliation_required')"),
         'Canonical EMAIL resolution does not detect cross-user reconciliation conflicts.'
     );
     emlu_assert(
