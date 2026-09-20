@@ -16,10 +16,16 @@ if (fc_is_post()) {
         exit('Forbidden');
     }
 
+    $redirectTo = '/crew.php';
+
     try {
         $action = (string) ($_POST['action'] ?? '');
+        $selectedCrewPublicId = trim((string) ($_POST['select_crew'] ?? ''));
+
         if (fc_product_context_handle_selection($pdo, $userId, $_POST)) {
-            // Choosing a Crew is normal navigation, not a success event.
+            if ($selectedCrewPublicId !== '') {
+                $redirectTo = '/crew.php?crew=' . rawurlencode($selectedCrewPublicId);
+            }
         } elseif ($action === 'create_crew') {
             $crew = fc_crew_create(
                 $pdo,
@@ -29,6 +35,7 @@ if (fc_is_post()) {
             );
             fc_product_context_select_crew($pdo, $userId, (int) $crew['id']);
             fc_flash('success', 'Your Crew is ready.');
+            $redirectTo = '/crew.php?crew=' . rawurlencode((string) $crew['public_id']);
         } elseif ($action === 'invite_member') {
             $context = fc_product_context($pdo, $userId);
             if ($context['crew'] === null) throw new DomainException('Select a Crew before inviting someone.');
@@ -46,6 +53,7 @@ if (fc_is_post()) {
             fc_flash('success', $delivery['driver'] === 'postmark'
                 ? 'Challenge invitation accepted by email transport.'
                 : 'Challenge invitation created. Email delivery is still in log mode.');
+            $redirectTo = '/crew.php?crew=' . rawurlencode((string) $context['crew']['public_id']);
         } elseif ($action === 'resend_invitation') {
             $context = fc_product_context($pdo, $userId);
             if ($context['crew'] === null) throw new DomainException('Select a Crew before resending an invitation.');
@@ -56,16 +64,19 @@ if (fc_is_post()) {
             fc_flash('success', $delivery['driver'] === 'postmark'
                 ? 'Crew invitation resend accepted by email transport.'
                 : 'Crew invitation refreshed. Email delivery is still in log mode.');
+            $redirectTo = '/crew.php?crew=' . rawurlencode((string) $context['crew']['public_id']);
         } elseif ($action === 'cancel_invitation') {
             $context = fc_product_context($pdo, $userId);
             if ($context['crew'] === null) throw new DomainException('Select a Crew before cancelling an invitation.');
             fc_crew_invitation_cancel($pdo, $userId, (int)$context['crew']['id'], (string)($_POST['invitation_public_id'] ?? ''));
             fc_flash('success', 'Crew invitation cancelled.');
+            $redirectTo = '/crew.php?crew=' . rawurlencode((string) $context['crew']['public_id']);
         } elseif ($action === 'remove_member') {
             if (($_POST['confirm_action'] ?? '') !== 'remove_member') throw new DomainException('Confirm Crew member removal first.');
             $targetCrew = fc_crew_require_public($pdo, $userId, (string) ($_POST['crew_public_id'] ?? ''));
             fc_crew_membership_remove_public($pdo, $userId, (int) $targetCrew['id'], (string) ($_POST['member_public_id'] ?? ''));
             fc_flash('success', 'Crew member removed. History was preserved.');
+            $redirectTo = '/crew.php?crew=' . rawurlencode((string) $targetCrew['public_id']);
         }
     } catch (Throwable $error) {
         fc_flash('error', $error instanceof DomainException || $error instanceof InvalidArgumentException
@@ -73,12 +84,14 @@ if (fc_is_post()) {
             : 'FitCrew could not complete that Crew action.');
     }
 
-    fc_redirect('/crew.php');
+    fc_redirect($redirectTo);
 }
 
 $appContext = fc_product_context($pdo, $userId);
+$showCrewList = !isset($_GET['crew']) || trim((string) $_GET['crew']) === '';
 $crew = $appContext['crew'];
-if (isset($_GET['crew']) && trim((string) $_GET['crew']) !== '') {
+
+if (!$showCrewList) {
     try {
         $crew = fc_crew_require_public($pdo, $userId, (string) $_GET['crew']);
         $appContext['crew'] = $crew;
@@ -88,13 +101,21 @@ if (isset($_GET['crew']) && trim((string) $_GET['crew']) !== '') {
         exit('Crew is unavailable.');
     }
 }
-$currentChallenge = $crew !== null ? fc_crew_current_challenge($pdo, (int) $crew['id']) : null;
-$memberships = $crew !== null ? fc_crew_memberships($pdo, $userId, (int) $crew['id']) : [];
-$memberContactEmails = $crew !== null && (string) $crew['membership_role'] === 'OWNER'
+
+$crewListCurrentChallenges = [];
+foreach ($appContext['crews'] as $contextCrew) {
+    $crewListCurrentChallenges[(int) $contextCrew['id']] = fc_crew_current_challenge($pdo, (int) $contextCrew['id']);
+}
+
+$currentChallenge = !$showCrewList && $crew !== null ? fc_crew_current_challenge($pdo, (int) $crew['id']) : null;
+$memberships = !$showCrewList && $crew !== null ? fc_crew_memberships($pdo, $userId, (int) $crew['id']) : [];
+$memberContactEmails = !$showCrewList && $crew !== null && (string) $crew['membership_role'] === 'OWNER'
     ? fc_crew_member_contact_email_map($pdo, $userId, (int) $crew['id'])
     : [];
-$pendingInvitations = $crew !== null && (string)$crew['membership_role'] === 'OWNER' ? fc_crew_invitations_pending($pdo, $userId, (int)$crew['id']) : [];
-$crewChallenges = $crew !== null ? fc_challenge_summaries_for_crew($pdo, $userId, (int) $crew['id']) : [];
+$pendingInvitations = !$showCrewList && $crew !== null && (string)$crew['membership_role'] === 'OWNER'
+    ? fc_crew_invitations_pending($pdo, $userId, (int)$crew['id'])
+    : [];
+$crewChallenges = !$showCrewList && $crew !== null ? fc_challenge_summaries_for_crew($pdo, $userId, (int) $crew['id']) : [];
 $signedInEmail = fc_current_account_email($pdo);
 $appSection = 'crew';
 $title = 'Crew';

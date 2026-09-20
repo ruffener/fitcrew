@@ -2,7 +2,7 @@
     <div>
         <p class="eyebrow">Challenges</p>
         <h1>Your competitions.</h1>
-        <p>Open any Challenge you own or participate in. Choosing a Challenge also selects its Crew.</p>
+        <p>Each Crew may have one current / non-terminal Challenge. You can manage or participate in several current Challenges across different Crews.</p>
     </div>
 </section>
 <nav class="family-view-switch" aria-label="Challenge list view"><a class="button button-secondary button-small" href="/challenge.php">Current Challenges</a><a class="button button-secondary button-small" href="/challenge.php?show=history">Include ended, archived &amp; deleted</a></nav>
@@ -52,7 +52,7 @@ foreach ($appContext['crews'] as $crewCandidate) {
                 <div class="section-bar">
                     <div>
                         <p class="card-kicker">Crew</p>
-                        <h2><?= fc_e((string) $groupCrew['display_name']) ?></h2>
+                        <h2><a class="section-context-link" href="/crew.php?crew=<?= fc_e(rawurlencode((string) $groupCrew['public_id'])) ?>"><?= fc_e((string) $groupCrew['display_name']) ?></a></h2>
                     </div>
                 </div>
 

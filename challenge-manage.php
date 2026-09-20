@@ -44,6 +44,10 @@ if (fc_is_post()) {
 }
 $challenge = fc_challenge_require_owner($pdo, $userId, $challengeId);
 $management = fc_challenge_management_state($pdo, $challengeId);
+$publishedRule = fc_challenge_rule_current_published($pdo, $challengeId);
+$draftRule = fc_challenge_rule_current_draft($pdo, $challengeId);
+$displayRule = $publishedRule ?? $draftRule;
+$isCurrentCrewChallenge = fc_challenge_is_current_for_crew($pdo, (int) $challenge['crew_id'], $challengeId);
 $events = $pdo->prepare('SELECT e.event_code,e.occurred_at,u.display_name AS actor_name FROM challenge_product_events e JOIN users u ON u.id=e.actor_user_id WHERE e.challenge_id=:c AND e.subject_user_id IS NULL ORDER BY e.id DESC LIMIT 30');
 $events->execute([':c' => $challengeId]);
 $ownerHistory = $events->fetchAll(PDO::FETCH_ASSOC);
