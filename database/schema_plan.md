@@ -118,3 +118,15 @@ Website-owned `0500_challenge_invitation_journey.sql` evolves the existing invit
 - final enrollment reuses the existing Challenge acceptance/privacy/participation/history tables and does not create a parallel participation engine.
 
 Migration family `05xx` is Website-owned for the Challenge Invitation Program. Auth `03xx` and Admin `0400` remain outside this ownership boundary.
+
+## Challenge Journey v1 lifecycle correction (0520)
+
+Website-owned `0520_challenge_lifecycle_launched.sql` aligns the database lifecycle
+constraint with the canonical Challenge Journey order:
+
+`DRAFT → FORMING_CREW → LAUNCHED → BASELINE → LIVE → FINAL_WEEK_LIVE → RESULTS_UNDER_REVIEW → COMPLETED`.
+
+`READY_TO_LAUNCH` is retired rather than relabeled because readiness precedes launch.
+The migration fails closed before schema mutation if any existing Challenge is still
+stored as `READY_TO_LAUNCH`; it does not translate or manufacture launch history.
+No participation, invitation, scoring, Rules/privacy, or health state is changed.

@@ -9,8 +9,8 @@ const FC_CREW_MEMBERSHIP_STATUSES = ['ACTIVE', 'LEFT', 'REMOVED'];
 const FC_CHALLENGE_LIFECYCLES = [
     'DRAFT',
     'FORMING_CREW',
+    'LAUNCHED',
     'BASELINE',
-    'READY_TO_LAUNCH',
     'LIVE',
     'FINAL_WEEK_LIVE',
     'RESULTS_UNDER_REVIEW',
@@ -40,14 +40,14 @@ function fc_challenge_lifecycle_label(string $status, string $operationalState =
     }
 
     return match (strtoupper($status)) {
-        'DRAFT' => 'Draft',
+        'DRAFT' => 'Challenge Created',
         'FORMING_CREW' => 'Forming Crew',
-        'BASELINE' => 'Baseline',
-        'READY_TO_LAUNCH' => 'Ready to Launch',
-        'LIVE' => 'Live',
-        'FINAL_WEEK_LIVE' => 'Final Week — Live',
-        'RESULTS_UNDER_REVIEW' => 'Challenge Complete — Results Under Review',
-        'COMPLETED' => 'Completed Challenge',
+        'LAUNCHED' => 'Challenge Launched',
+        'BASELINE' => 'Baseline Week',
+        'LIVE' => 'Competing',
+        'FINAL_WEEK_LIVE' => 'Final Week',
+        'RESULTS_UNDER_REVIEW' => 'Results Under Review',
+        'COMPLETED' => 'Challenge Complete',
         default => 'Challenge',
     };
 }

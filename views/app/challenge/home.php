@@ -23,14 +23,26 @@ $currentLifecycleIndex = array_search($currentLifecycle, FC_CHALLENGE_LIFECYCLES
 $currentLifecycleIndex = $currentLifecycleIndex === false ? 0 : (int) $currentLifecycleIndex;
 $lifecycleStageCount = count(FC_CHALLENGE_LIFECYCLES);
 $lifecycleDescriptions = [
-    'DRAFT' => 'Set the Challenge basics and review Rule Version 1.',
-    'FORMING_CREW' => 'Bring the Crew together and confirm who is taking on this Challenge.',
-    'BASELINE' => 'Establish qualified starting measurements for participating Crew members.',
-    'READY_TO_LAUNCH' => 'Baseline requirements are satisfied and the Challenge is ready to begin.',
-    'LIVE' => 'The Challenge is underway. Official progress appears as governed data becomes available.',
-    'FINAL_WEEK_LIVE' => 'The final live week is in progress. Keep showing up and finish strong.',
-    'RESULTS_UNDER_REVIEW' => 'The Challenge has ended and final results are being checked before they are locked.',
-    'COMPLETED' => 'Final results are complete and this Challenge becomes part of the Crew’s history.',
+    'DRAFT' => 'Set the Challenge details, dates, rules and settings.',
+    'FORMING_CREW' => 'Invite people and confirm who is taking on the Challenge.',
+    'LAUNCHED' => 'The Challenge has officially begun.',
+    'BASELINE' => 'Establish each participant’s qualified starting baseline during the first week of the Challenge.',
+    'LIVE' => 'The Crew is competing and progress is being tracked.',
+    'FINAL_WEEK_LIVE' => 'Finish strong. This is the final competitive week.',
+    'RESULTS_UNDER_REVIEW' => 'The Challenge has ended and final results are being checked.',
+    'COMPLETED' => 'Results are final and this Challenge becomes part of the Crew’s history.',
+];
+$lifecycleDestinations = [
+    'DRAFT' => '/challenge-manage.php?challenge=' . rawurlencode((string) $challenge['public_id']),
+    'FORMING_CREW' => '/participants.php?challenge=' . rawurlencode((string) $challenge['public_id']),
+];
+$lifecycleStageInfo = [
+    'LAUNCHED' => 'Launch marks the official start of the Challenge. No extra Owner action is created here merely to keep the Challenge in a launched holding state.',
+    'BASELINE' => 'Baseline Week is the first week of the Challenge. Qualified starting baselines are established before governed competitive progress can be compared.',
+    'LIVE' => 'During Competing, the Crew is actively taking on the Challenge. Progress and standings appear only as their governed product services become available.',
+    'FINAL_WEEK_LIVE' => 'Final Week is the last competitive week. Existing Challenge rules remain in force; this Journey row does not change scoring or timing.',
+    'RESULTS_UNDER_REVIEW' => 'Competition has ended. Final results are checked before the Challenge is finalized. Finalization controls are not created by this Journey row.',
+    'COMPLETED' => 'The Challenge is final and remains part of Crew history. Historical Challenge truth is preserved.',
 ];
 ?>
 <?php require fc_path('views/app/challenge/subnav.php'); ?>
@@ -61,9 +73,9 @@ $lifecycleDescriptions = [
     <div class="fc-modal-panel">
         <header class="fc-modal-hero">
             <div>
-                <p class="eyebrow">Challenge journey</p>
-                <h2 id="challenge-lifecycle-title">From setup to finish.</h2>
-                <p>Stage <?= fc_e((string) ($currentLifecycleIndex + 1)) ?> of <?= fc_e((string) $lifecycleStageCount) ?> · <?= fc_e(fc_challenge_lifecycle_label($currentLifecycle)) ?></p>
+                <p class="eyebrow">Stage <?= fc_e((string) ($currentLifecycleIndex + 1)) ?> of <?= fc_e((string) $lifecycleStageCount) ?> · <?= fc_e(fc_challenge_lifecycle_label($currentLifecycle)) ?></p>
+                <h2 id="challenge-lifecycle-title">Challenge Journey</h2>
+                <p>Explore each stage without changing the Challenge lifecycle.</p>
             </div>
             <button class="fc-modal-close" type="button" data-modal-close aria-label="Close Challenge journey">
                 <span aria-hidden="true">×</span>
@@ -89,17 +101,39 @@ $lifecycleDescriptions = [
                         ? 'Complete'
                         : ($stageState === 'current' ? 'Current' : 'Upcoming');
                     ?>
-                    <li class="lifecycle-step is-<?= fc_e($stageState) ?>">
-                        <div class="lifecycle-step-marker" aria-hidden="true">
-                            <?= $stageState === 'complete' ? '✓' : fc_e((string) ($index + 1)) ?>
-                        </div>
-                        <div class="lifecycle-step-copy">
-                            <div class="lifecycle-step-heading">
-                                <strong><?= fc_e(fc_challenge_lifecycle_label($stage)) ?></strong>
-                                <span><?= fc_e($stageStateLabel) ?></span>
-                            </div>
-                            <p><?= fc_e($lifecycleDescriptions[$stage] ?? '') ?></p>
-                        </div>
+                    <li class="lifecycle-step-shell is-<?= fc_e($stageState) ?>">
+                        <?php if (isset($lifecycleDestinations[$stage])): ?>
+                            <a
+                                class="lifecycle-step lifecycle-step-action"
+                                href="<?= fc_e($lifecycleDestinations[$stage]) ?>"
+                                aria-label="<?= fc_e(fc_challenge_lifecycle_label($stage) . ': ' . $stageStateLabel . '. ' . ($lifecycleDescriptions[$stage] ?? '')) ?>"
+                            >
+                                <span class="lifecycle-step-marker" aria-hidden="true"><?= $stageState === 'complete' ? '✓' : fc_e((string) ($index + 1)) ?></span>
+                                <span class="lifecycle-step-copy">
+                                    <span class="lifecycle-step-heading"><strong><?= fc_e(fc_challenge_lifecycle_label($stage)) ?></strong><span><?= fc_e($stageStateLabel) ?></span></span>
+                                    <span class="lifecycle-step-description"><?= fc_e($lifecycleDescriptions[$stage] ?? '') ?></span>
+                                </span>
+                                <span class="lifecycle-step-chevron" aria-hidden="true">→</span>
+                            </a>
+                        <?php else: ?>
+                            <details class="lifecycle-step-details">
+                                <summary
+                                    class="lifecycle-step lifecycle-step-action"
+                                    aria-label="<?= fc_e(fc_challenge_lifecycle_label($stage) . ': ' . $stageStateLabel . '. ' . ($lifecycleDescriptions[$stage] ?? '') . ' Explore stage information.') ?>"
+                                >
+                                    <span class="lifecycle-step-marker" aria-hidden="true"><?= $stageState === 'complete' ? '✓' : fc_e((string) ($index + 1)) ?></span>
+                                    <span class="lifecycle-step-copy">
+                                        <span class="lifecycle-step-heading"><strong><?= fc_e(fc_challenge_lifecycle_label($stage)) ?></strong><span><?= fc_e($stageStateLabel) ?></span></span>
+                                        <span class="lifecycle-step-description"><?= fc_e($lifecycleDescriptions[$stage] ?? '') ?></span>
+                                    </span>
+                                    <span class="lifecycle-step-chevron" aria-hidden="true">→</span>
+                                </summary>
+                                <div class="lifecycle-stage-information">
+                                    <strong>About <?= fc_e(fc_challenge_lifecycle_label($stage)) ?></strong>
+                                    <p><?= fc_e($lifecycleStageInfo[$stage] ?? $lifecycleDescriptions[$stage] ?? '') ?></p>
+                                </div>
+                            </details>
+                        <?php endif; ?>
                     </li>
                 <?php endforeach; ?>
             </ol>

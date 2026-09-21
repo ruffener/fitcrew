@@ -119,7 +119,7 @@ if (str_contains($crewView, '/challenge.php?new=1')) {
 }
 
 $challengeHome = file_get_contents($root . '/views/app/challenge/home.php') ?: '';
-foreach (['challenge-lifecycle-modal', 'data-modal-open="challenge-lifecycle-modal"', 'Challenge journey', 'Stage <?=', 'Needs Attention', 'FC_CHALLENGE_LIFECYCLES', 'challenge-action-grid', 'fc-action-tile', 'fc-action-chevron', 'Participants', 'Health readiness', 'Review Challenge Rules'] as $required) {
+foreach (['challenge-lifecycle-modal', 'data-modal-open="challenge-lifecycle-modal"', 'Challenge Journey', 'Stage <?=', 'lifecycle-step-action', 'Needs Attention', 'FC_CHALLENGE_LIFECYCLES', 'challenge-action-grid', 'fc-action-tile', 'fc-action-chevron', 'Participants', 'Health readiness', 'Review Challenge Rules'] as $required) {
     if (!str_contains($challengeHome, $required)) {
         throw new RuntimeException('Challenge lifecycle/action contract is missing: ' . $required);
     }
