@@ -17,7 +17,7 @@ $emailAssetVersion = (string) max(
     <div<?= $emailAckPending ? ' inert' : '' ?>>
     <?php $headerVariant = 'public'; require fc_path('views/partials/header.php'); ?>
     <main class="auth-shell">
-        <?php require fc_path('views/partials/flash.php'); ?>
+        <?php require fc_path('views/auth/notices.php'); ?>
         <div class="auth-layout">
             <section class="auth-brand-panel" aria-label="FitCrew Challenge brand">
                 <img src="/assets/img/brand/fitcrew-logo-dark-reference.png" alt="FitCrew Challenge">

@@ -7,18 +7,23 @@
     <meta name="robots" content="noindex,nofollow,noarchive">
     <title>Confirm email sign-in · FitCrew Challenge</title>
     <style>
-        :root { color-scheme: light; font-family: Arial, sans-serif; color: #0b1d43; background: #f3f6fb; }
+        /* Security-isolated Foundation roles: no shared stylesheet or remote fonts. */
+        :root { color-scheme: light; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 16px; color: #0d1b3d; background: #f2f4f7; }
         * { box-sizing: border-box; }
-        body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; }
-        main { width: min(100%, 520px); background: #fff; border: 1px solid #d4ddec; border-radius: 18px; padding: 32px; box-shadow: 0 18px 50px rgba(11,29,67,.10); }
-        .eyebrow { color: #1744c7; font-size: .78rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-        h1 { margin: 8px 0 12px; font-size: clamp(1.8rem, 6vw, 2.6rem); line-height: 1.05; }
-        p { color: #536078; line-height: 1.55; }
+        body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; line-height: 1.65; }
+        main { width: min(100%, 520px); min-width: 0; background: #fff; border: 1px solid #d8dee9; border-radius: 18px; padding: 32px; box-shadow: 0 18px 50px rgba(13,27,61,.10); overflow-wrap: anywhere; }
+        .eyebrow { margin: 0; color: #1e40af; font-size: .8125rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+        h1 { margin: 8px 0 16px; font-size: 2rem; line-height: 1.2; }
+        p { margin: 16px 0; color: #536174; }
         form { margin-top: 24px; }
-        button, a { display: inline-block; border-radius: 9px; padding: 12px 18px; font: inherit; font-weight: 800; }
-        button { width: 100%; border: 0; color: #fff; background: #1646d8; cursor: pointer; }
-        a { color: #1646d8; }
-        .security { border-left: 3px solid #ff6b00; padding-left: 14px; font-size: .9rem; }
+        button, a { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; max-width: 100%; border-radius: 10px; padding: 12px 16px; font: inherit; font-size: 1rem; font-weight: 700; text-align: center; }
+        button { width: 100%; border: 1px solid #1e40af; color: #fff; background: #1e40af; cursor: pointer; }
+        button:hover { background: #17378f; }
+        a { color: #1e40af; text-underline-offset: 3px; }
+        button:focus-visible, a:focus-visible { outline: 3px solid #1e40af; outline-offset: 3px; }
+        .security, .error { padding: 16px; border: 1px solid #bfd0ff; border-radius: 14px; font-size: .875rem; line-height: 1.55; background: #eef3ff; color: #0d1b3d; }
+        .error { border-color: #fda29b; background: #fff1f0; color: #b42318; }
+        @media (max-width: 520px) { body { padding: 16px; } main { padding: 24px; } }
     </style>
 </head>
 <body>
@@ -36,7 +41,7 @@
     </section>
     <section id="email-link-invalid" hidden>
         <h1>This link cannot be used.</h1>
-        <p>It may be invalid, expired, replaced, or already used.</p>
+        <p class="error">It may be invalid, expired, replaced, or already used.</p>
         <p><a href="/login.php">Request a new sign-in link</a></p>
     </section>
 </main>

@@ -1,8 +1,117 @@
-/* Auth-only required email request acknowledgement. */
-.auth-email-ack-shade { position: fixed; inset: 0; z-index: 10000; background: rgba(8, 20, 47, .65); }
-.auth-email-ack { position: fixed; inset: 0; margin: auto; height: fit-content; width: min(32rem, calc(100% - 2rem)); max-height: calc(100dvh - 2rem); overflow: auto; box-sizing: border-box; padding: clamp(1.25rem, 4vw, 2rem); border: 1px solid #bac6df; border-radius: 1rem; background: white; color: #102044; z-index: 10001; box-shadow: 0 1.5rem 4rem rgba(8,20,47,.25); }
-.auth-email-ack::backdrop { background: rgba(8, 20, 47, .65); }
-.auth-email-ack h2 { margin: 0 0 1rem; font: 700 1.5rem/1.25 Arial, sans-serif; }
-.auth-email-ack p { font-size: 1rem; line-height: 1.6; margin: 0 0 1rem; color: #304363; }
-.auth-email-ack button { width: 100%; min-height: 48px; font-size: 1rem; line-height: 1.5; white-space: normal; }
-.auth-email-ack button:focus-visible { outline: 3px solid #123bad; outline-offset: 4px; }
+/* Auth consumes the Website-owned FitCrew UI Foundation v1.
+   Keep these overrides scoped; shared app.css and the Google SDK are untouched. */
+.auth-body { font-size: var(--fc-type-body); line-height: 1.65; }
+.auth-body .auth-shell { width: min(1040px, calc(100% - 32px)); padding: var(--fc-space-12) 0; }
+.auth-body .auth-layout {
+    grid-template-columns: minmax(280px, .72fr) minmax(0, 1.28fr);
+    min-height: 0;
+    border-radius: var(--fc-radius-shell);
+}
+.auth-body .auth-brand-panel { min-height: 0; padding: var(--fc-space-8); gap: var(--fc-space-6); }
+.auth-body .auth-brand-panel img { width: min(100%, 260px); height: auto; margin: 0 auto; }
+.auth-body .auth-brand-panel > p { margin: 0; font-size: var(--fc-type-body); }
+.auth-body .auth-brand-points { gap: var(--fc-space-2); }
+.auth-body .auth-brand-points span { padding: var(--fc-space-1) var(--fc-space-2); font-size: var(--fc-type-meta); }
+.auth-body .auth-content { min-width: 0; padding: var(--fc-space-8) var(--fc-space-12); }
+.auth-body .auth-card { width: 100%; min-width: 0; }
+.auth-body .auth-card .status-chip { margin-bottom: var(--fc-space-4); font-size: var(--fc-type-meta); }
+.auth-body .auth-card h1 {
+    margin: 0 0 var(--fc-space-4);
+    font-size: var(--fc-type-page-title);
+    line-height: 1.05;
+    letter-spacing: .015em;
+    overflow-wrap: anywhere;
+}
+.auth-body .auth-intro { margin: 0; font-size: var(--fc-type-body); line-height: 1.65; }
+.auth-body .provider-choice-list { margin-top: var(--fc-space-6); gap: var(--fc-space-6); }
+.auth-body .google-provider-shell,
+.auth-body .provider-choice {
+    min-width: 0;
+    min-height: var(--fc-control-provider);
+    padding: var(--fc-space-4);
+    border-radius: var(--fc-radius-card);
+}
+/* No selectors target the SDK iframe, its button, or its generated markup. */
+.auth-body .google-provider-shell { padding: 0; border: 0; }
+.auth-body .provider-choice { gap: var(--fc-space-3); }
+.auth-body .provider-choice:disabled { opacity: 1; background: var(--fc-surface-soft); border-style: dashed; }
+.auth-body .provider-choice-copy { gap: var(--fc-space-1); overflow-wrap: anywhere; }
+.auth-body .provider-choice-copy strong { font-size: var(--fc-type-body); }
+.auth-body .provider-choice-copy small { font-size: var(--fc-type-supporting); line-height: 1.55; }
+.auth-body .provider-status { font-size: var(--fc-type-supporting); line-height: 1.5; white-space: normal; }
+.auth-body .email-provider-form { margin: 0; gap: var(--fc-space-3); }
+.auth-body .email-provider-form label { font-size: var(--fc-type-supporting); line-height: 1.5; }
+.auth-body .email-provider-form input:not([type="hidden"]) {
+    min-height: var(--fc-control-input);
+    padding: var(--fc-space-3) var(--fc-space-4);
+    border-radius: var(--fc-radius-control);
+    font: inherit;
+    font-size: var(--fc-type-body);
+}
+.auth-body .button { min-height: var(--fc-control-button); font-size: var(--fc-type-body); white-space: normal; line-height: 1.5; }
+.auth-body .provider-help { margin: 0; font-size: var(--fc-type-supporting); line-height: 1.55; }
+.auth-body .google-provider-shell .provider-help { margin-top: var(--fc-space-4); font-weight: 500; }
+.auth-body .fc-notice {
+    gap: var(--fc-space-1);
+    padding: var(--fc-space-4);
+    border: 1px solid var(--fc-border);
+    border-radius: var(--fc-radius-notice);
+    font-size: var(--fc-type-supporting);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+.auth-body .fc-notice-info { border-color: #bfd0ff; background: var(--fc-surface-blue); color: var(--fc-text); }
+.auth-body .fc-notice-success { border-color: #abefc6; background: #ecfdf3; color: var(--fc-success); }
+.auth-body .fc-notice-warning { border-color: #fedf89; background: #fffaeb; color: var(--fc-warning); }
+.auth-body .fc-notice-error,
+.auth-body .google-provider-shell .provider-help.is-error { border-color: #fda29b; background: #fff1f0; color: var(--fc-danger); }
+.auth-body .auth-notice { margin: 0 0 var(--fc-space-4); }
+.auth-body .account-entry-note { margin-top: var(--fc-space-6); }
+.auth-body .account-entry-note strong { margin: 0; font-size: var(--fc-type-supporting); }
+.auth-body .account-entry-note p { margin: 0; font-size: var(--fc-type-supporting); line-height: 1.55; }
+.auth-body .site-nav a,
+.auth-body .header-sign-in { display: inline-flex; align-items: center; min-height: var(--fc-control-touch); font-size: var(--fc-type-supporting); }
+.auth-body .brand-lockup,
+.auth-body .footer-brand { min-height: var(--fc-control-touch); align-items: center; }
+.auth-body .nav-toggle { min-width: var(--fc-control-touch); min-height: var(--fc-control-touch); }
+.auth-body .footer-tagline,
+.auth-body .footer-copy p { font-size: var(--fc-type-supporting); }
+.auth-body a:focus-visible,
+.auth-body button:focus-visible,
+.auth-body input:focus-visible { outline: var(--fc-focus-outline); outline-offset: var(--fc-focus-offset); }
+.auth-body .site-footer a:focus-visible { outline-color: var(--fc-white); }
+
+/* Required acknowledgement: retain the modal, inert fallback and protected form. */
+.auth-email-ack-shade { position: fixed; inset: 0; z-index: 10000; background: rgba(13, 27, 61, .65); }
+.auth-email-ack {
+    position: fixed; inset: 0; margin: auto; height: fit-content;
+    width: min(32rem, calc(100% - 32px)); max-height: calc(100dvh - 32px);
+    overflow: auto; box-sizing: border-box; padding: var(--fc-space-8);
+    border: 1px solid var(--fc-border-strong); border-radius: var(--fc-radius-shell);
+    background: var(--fc-white); color: var(--fc-text); z-index: 10001;
+    box-shadow: var(--shadow-md);
+}
+.auth-email-ack::backdrop { background: rgba(13, 27, 61, .65); }
+.auth-email-ack h2 { margin: 0 0 var(--fc-space-4); font-size: var(--fc-type-section-title); line-height: 1.2; }
+.auth-email-ack p { font-size: var(--fc-type-body); line-height: 1.65; margin: 0 0 var(--fc-space-4); color: var(--fc-text-muted); }
+.auth-email-ack button { width: 100%; min-height: var(--fc-control-button); font-size: var(--fc-type-body); line-height: 1.5; white-space: normal; }
+
+@media (max-width: 800px) {
+    .auth-body .auth-shell { padding: var(--fc-space-6) 0; }
+    .auth-body .auth-layout { grid-template-columns: minmax(0, 1fr); }
+    .auth-body .auth-brand-panel { padding: var(--fc-space-4); gap: 0; }
+    .auth-body .auth-brand-panel img { width: min(100%, 200px); }
+    /* The full logo already includes this decorative tagline. */
+    .auth-body .auth-brand-panel > p,
+    .auth-body .auth-brand-points { display: none; }
+    .auth-body .auth-content { padding: var(--fc-space-6); }
+    .auth-body .auth-card { max-width: 500px; }
+}
+@media (max-width: 520px) {
+    .auth-body .auth-shell { width: calc(100% - 24px); padding: var(--fc-space-4) 0; }
+    .auth-body .auth-content { padding: var(--fc-space-6) var(--fc-space-4); }
+    /* These gutters leave room for the unmodified SDK's 260px minimum. */
+    .auth-body .provider-choice { grid-template-columns: 38px minmax(0, 1fr); }
+    .auth-body .provider-status { grid-column: 2; justify-self: start; }
+    .auth-email-ack { padding: var(--fc-space-6); }
+}
