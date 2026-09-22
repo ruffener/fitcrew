@@ -20,5 +20,5 @@ DirectoryIndex index.php
     RewriteEngine On
 
     # Application internals are never directly web-addressable.
-    RewriteRule ^(?:\.git|\.github|inc|views|database|storage|docs|tests|vendor)(?:/|$) - [F,L,NC]
+    RewriteRule ^(?:\.git|\.github|\.fitcrew-deployment|inc|views|database|storage|docs|tests|vendor)(?:/|$) - [F,L,NC]
 </IfModule>
