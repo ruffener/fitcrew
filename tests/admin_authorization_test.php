@@ -1,0 +1,27 @@
+<?php
+declare(strict_types=1);
+require __DIR__ . '/admin_test_support.php';
+$p=admin_test_db();$f=admin_test_fixture($p);
+admin_test_assert(in_array('PLATFORM_SUPER_ADMIN', FC_PLATFORM_ROLES, true), 'Auth canonical role dependency present');
+admin_test_assert(fc_admin_is_super(fc_admin_enter($p,$f['super'],'index',false)), 'Super Admin enters console');
+admin_test_assert(fc_admin_is_admin(fc_admin_enter($p,$f['admin'],'users',false)), 'Admin enters console');
+admin_test_denied(fn()=>fc_admin_enter($p,$f['user'],'index',false),'role_required');
+admin_test_denied(fn()=>fc_admin_enter($p,$f['admin'],'admins',true),'role_required');
+$p->exec("UPDATE users SET platform_role_code='USER' WHERE id=2");
+admin_test_denied(fn()=>fc_admin_enter($p,$f['admin'],'index',false),'role_required');
+$p->exec("UPDATE users SET platform_role_code='PLATFORM_ADMIN',account_status='SUSPENDED' WHERE id=2");
+admin_test_denied(fn()=>fc_admin_enter($p,$f['admin'],'index',false),'role_required');
+$p->exec("UPDATE users SET account_status='ACTIVE' WHERE id=2");
+$p->exec("UPDATE user_auth_identities SET identity_status='DISABLED' WHERE id=2");
+admin_test_denied(fn()=>fc_admin_enter($p,$f['admin'],'index',false),'identity_inactive');
+$p->exec("UPDATE user_auth_identities SET identity_status='ACTIVE' WHERE id=2");
+$p->exec('UPDATE user_sessions SET revoked_at=CURRENT_TIMESTAMP(6) WHERE id=2');
+admin_test_denied(fn()=>fc_admin_enter($p,$f['admin'],'index',false),'session_inactive');
+$p->exec('UPDATE user_sessions SET revoked_at=NULL,idle_expires_at=CURRENT_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE id=2');
+admin_test_denied(fn()=>fc_admin_enter($p,$f['admin'],'index',false),'session_inactive');
+$p->exec("UPDATE user_auth_identities SET email_at_provider='ruffener@gmail.com' WHERE id=3");
+admin_test_denied(fn()=>fc_admin_enter($p,$f['user'],'index',false),'role_required');
+$p->exec("UPDATE user_auth_identities SET email_at_provider='unrelated@example.test' WHERE id=1");
+admin_test_assert(fc_admin_is_super(fc_admin_enter($p,$f['super'],'admins',true)), 'Stored role, not provider email, authorizes Super Admin');
+admin_test_assert((int)$p->query("SELECT COUNT(*) FROM audit_events WHERE event_type='ADMIN_ENTRY' AND outcome='DENIED'")->fetchColumn()>=7,'Entry denials audited');
+echo "ADMIN AUTHORIZATION: PASS\n";
