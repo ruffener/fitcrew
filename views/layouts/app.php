@@ -7,6 +7,8 @@
 $appSection = $appSection ?? 'overview';
 $selectedCrew = $appContext['crew'] ?? null;
 $selectedChallenge = $appContext['challenge'] ?? null;
+$showAdminTools = (($currentUser['account_status'] ?? null) === 'ACTIVE')
+    && in_array(($currentUser['platform_role_code'] ?? null), ['PLATFORM_ADMIN', 'PLATFORM_SUPER_ADMIN'], true);
 ?>
 <!doctype html>
 <html lang="en">
@@ -44,6 +46,9 @@ $selectedChallenge = $appContext['challenge'] ?? null;
             <div class="sidebar-secondary">
                 <a class="<?= $appSection === 'account' ? 'is-current' : '' ?>" href="/account.php"><span aria-hidden="true">○</span> Account</a>
                 <a class="<?= $appSection === 'health' ? 'is-current' : '' ?>" href="/health/google/status.php"><span aria-hidden="true">♡</span> Health Connections</a>
+                <?php if ($showAdminTools): ?>
+                    <a href="/admin/"><span aria-hidden="true">▦</span> Admin Tools</a>
+                <?php endif; ?>
                 <form method="post" action="/logout.php">
                     <?= fc_csrf_input() ?>
                     <button type="submit"><span aria-hidden="true">↗</span> Sign Out</button>
@@ -71,6 +76,9 @@ $selectedChallenge = $appContext['challenge'] ?? null;
     <div class="mobile-more-menu" id="mobile-more-menu" hidden>
         <a href="/account.php">Account</a>
         <a href="/health/google/status.php">Health Connections</a>
+        <?php if ($showAdminTools): ?>
+            <a href="/admin/">Admin Tools</a>
+        <?php endif; ?>
         <form method="post" action="/logout.php"><?= fc_csrf_input() ?><button type="submit">Sign Out</button></form>
     </div>
 
