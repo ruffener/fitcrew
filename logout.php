@@ -4,13 +4,25 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/inc/bootstrap.php';
 
+header('Cache-Control: no-store, private');
+
 if (!fc_is_post()) {
     fc_redirect('/');
 }
 
-if (!fc_validate_csrf($_POST['csrf_token'] ?? null)) {
-    fc_response_code(403);
-    exit('Forbidden');
+$csrfToken = $_POST['csrf_token'] ?? null;
+if (!is_string($csrfToken) || !fc_validate_csrf($csrfToken)) {
+    // An older tab can retain a token from before logout or account switching.
+    // Never treat an unverified request as permission to sign out an active
+    // session, including a different account now open in another browser tab.
+    if (fc_current_user() === null) {
+        fc_flash('notice', 'Please sign in again to continue.');
+        header('Location: /login.php', true, 303);
+    } else {
+        fc_flash('notice', 'We could not verify your sign-out request. Please select Sign Out again.');
+        header('Location: /app.php', true, 303);
+    }
+    exit;
 }
 
 $currentUser = fc_current_user();
