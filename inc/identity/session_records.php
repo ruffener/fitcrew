@@ -37,31 +37,44 @@ function fc_session_record_create(
         throw new InvalidArgumentException('Absolute session expiry cannot be earlier than idle expiry.');
     }
 
-    fc_assert_auth_identity_owned_by_user($pdo, $userId, $authIdentityId);
+    // Serialize session issuance with governed suspension/end-session operations.
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) $pdo->beginTransaction();
+    try {
+        $active = $pdo->prepare('SELECT account_status FROM users WHERE id = ? FOR UPDATE');
+        $active->execute([$userId]);
+        if ($active->fetchColumn() !== 'ACTIVE') throw new DomainException('fitcrew_account_access_denied');
+        fc_assert_auth_identity_owned_by_user($pdo, $userId, $authIdentityId);
 
-    $hash = fc_session_id_hash($rawSessionId);
-    $statement = $pdo->prepare(
-        'INSERT INTO user_sessions ( ' .
-        ' user_id, auth_identity_id, session_id_hash, idle_expires_at, absolute_expires_at, ' .
-        ' user_agent_summary, client_network_hash ' .
-        ') VALUES ( ' .
-        ' :user_id, :auth_identity_id, :session_hash, :idle_expires_at, :absolute_expires_at, ' .
-        ' :user_agent_summary, :client_network_hash ' .
-        ')'
-    );
-    $statement->execute([
-        ':user_id' => $userId,
-        ':auth_identity_id' => $authIdentityId,
-        ':session_hash' => $hash,
-        ':idle_expires_at' => $idleExpiresAt->format('Y-m-d H:i:s.u'),
-        ':absolute_expires_at' => $absoluteExpiresAt->format('Y-m-d H:i:s.u'),
-        ':user_agent_summary' => $userAgentSummary !== null ? substr($userAgentSummary, 0, 255) : null,
-        ':client_network_hash' => $rawClientNetworkEvidence !== null
-            ? fc_secret_evidence_hash($rawClientNetworkEvidence)
-            : null,
-    ]);
+        $hash = fc_session_id_hash($rawSessionId);
+        $statement = $pdo->prepare(
+            'INSERT INTO user_sessions ( ' .
+            ' user_id, auth_identity_id, session_id_hash, idle_expires_at, absolute_expires_at, ' .
+            ' user_agent_summary, client_network_hash ' .
+            ') VALUES ( ' .
+            ' :user_id, :auth_identity_id, :session_hash, :idle_expires_at, :absolute_expires_at, ' .
+            ' :user_agent_summary, :client_network_hash ' .
+            ')'
+        );
+        $statement->execute([
+            ':user_id' => $userId,
+            ':auth_identity_id' => $authIdentityId,
+            ':session_hash' => $hash,
+            ':idle_expires_at' => $idleExpiresAt->format('Y-m-d H:i:s.u'),
+            ':absolute_expires_at' => $absoluteExpiresAt->format('Y-m-d H:i:s.u'),
+            ':user_agent_summary' => $userAgentSummary !== null ? substr($userAgentSummary, 0, 255) : null,
+            ':client_network_hash' => $rawClientNetworkEvidence !== null
+                ? fc_secret_evidence_hash($rawClientNetworkEvidence)
+                : null,
+        ]);
 
-    return ['id' => (int) $pdo->lastInsertId(), 'session_id_hash' => $hash];
+        $result = ['id' => (int) $pdo->lastInsertId(), 'session_id_hash' => $hash];
+        if ($ownsTransaction) $pdo->commit();
+        return $result;
+    } catch (Throwable $error) {
+        if ($ownsTransaction && $pdo->inTransaction()) $pdo->rollBack();
+        throw $error;
+    }
 }
 
 function fc_session_revoke(PDO $pdo, string $rawSessionId, string $reason): bool
@@ -111,7 +124,7 @@ function fc_session_record_resolve_active(PDO $pdo, string $rawSessionId, int $i
         '  AND s.revoked_at IS NULL ' .
         '  AND s.idle_expires_at > CURRENT_TIMESTAMP(6) ' .
         '  AND s.absolute_expires_at > CURRENT_TIMESTAMP(6) ' .
-        'LIMIT 1'
+        'LIMIT 1 FOR UPDATE'
     );
     $statement->execute([':session_hash' => fc_session_id_hash($rawSessionId)]);
     $row = $statement->fetch(PDO::FETCH_ASSOC);
@@ -139,7 +152,12 @@ function fc_session_record_resolve_active(PDO $pdo, string $rawSessionId, int $i
         ':id' => (int) $row['session_record_id'],
     ]);
 
-    return $row;
+    // A revoke may have committed after the initial lookup. Re-read current state
+    // (a locking read also avoids a caller's older repeatable-read snapshot).
+    $statement->execute([':session_hash' => fc_session_id_hash($rawSessionId)]);
+    $current = $statement->fetch(PDO::FETCH_ASSOC);
+    if ($current === false || $current['account_status'] !== 'ACTIVE' || $current['identity_status'] !== 'ACTIVE') return null;
+    return $current;
 }
 
 function fc_session_count_active_for_user(PDO $pdo, int $userId): int
