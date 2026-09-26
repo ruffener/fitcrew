@@ -14,5 +14,6 @@ require_once __DIR__ . '/challenge_invitations.php';
 require_once __DIR__ . '/rules.php';
 require_once __DIR__ . '/challenges.php';
 require_once __DIR__ . '/context.php';
+require_once __DIR__ . '/admin_operations.php';
 
 require_once __DIR__ . '/family_alpha.php';

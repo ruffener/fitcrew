@@ -130,3 +130,11 @@ constraint with the canonical Challenge Journey order:
 The migration fails closed before schema mutation if any existing Challenge is still
 stored as `READY_TO_LAUNCH`; it does not translate or manufacture launch history.
 No participation, invitation, scoring, Rules/privacy, or health state is changed.
+
+## ADMIN-2B / ADMIN-2C Product owner operations (0540)
+
+Website/Product-owned `0540_product_admin_operations.sql` adds only durable idempotency receipts for the governed Admin Crew/Challenge service layer. Crew, membership, Challenge, participation, Rules, owner-control and audit truth remain in their existing tables.
+
+The Product service requires the authenticated actor's current stored `PLATFORM_ADMIN` / `PLATFORM_SUPER_ADMIN` authority, stale-state revision hashes, 16–80 character request keys, an administrator reason, atomic success auditing, and exact before/after metadata. Ordinary Admin is limited to descriptive/safe draft edits; Super Admin is required for Crew ownership transfer, archival/restriction operations, participant/member removal, and active-Challenge corrections.
+
+Published Rule history is never overwritten. A governed Challenge settings correction creates/updates a DRAFT Rule Version that supersedes the current published version; `0540` does not authorize silent publication or participant re-acceptance. Direct membership/participation activation remains outside Admin Product operations because explicit invitation/acceptance is authoritative.
