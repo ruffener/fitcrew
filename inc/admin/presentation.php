@@ -26,7 +26,9 @@ function fc_admin_table(array $rows, array $columns, ?array $link = null): void
             if ($key === 'provider_email_verified') { $value = $value === null ? 'Unknown' : ((int) $value === 1 ? 'Yes' : 'No'); }
             if ($key === 'is_primary_for_contact') { $value = (int) $value === 1 ? 'Yes' : 'No'; }
             echo '<td>';
-            if ($link !== null && $key === $link['column']) {
+            if ($key === 'actor_name' || $key === 'target_name') {
+                echo fc_admin_audit_person($row, $key === 'actor_name' ? 'actor' : 'target');
+            } elseif ($link !== null && $key === $link['column']) {
                 echo '<a href="' . fc_e($link['route'] . '?id=' . rawurlencode((string) $row[$link['id'] ?? 'public_id'])) . '">' . fc_admin_text($value) . '</a>';
             } else { echo fc_admin_text($value); }
             echo '</td>';
@@ -43,8 +45,19 @@ function fc_admin_facts(array $facts): void
     echo '</dl>';
 }
 
+/** Current contact information is display context, never authorization or historical email evidence. */
+function fc_admin_audit_person(array $row, string $prefix): string
+{
+    $name = fc_admin_text($row[$prefix . '_name'] ?? null);
+    $email = (string) ($row[$prefix . '_email'] ?? '');
+    $publicId = (string) ($row[$prefix . '_public_id'] ?? '');
+    $detail = $email !== '' ? $email : ($publicId !== '' ? 'ID: ' . $publicId : '');
+    return $name . ($detail === '' ? '' : '<span class="admin-audit-contact">' . fc_e($detail) . '</span>');
+}
+
 function fc_admin_audit_table(array $rows): void
 {
+    if ($rows !== []) { echo '<p class="admin-time-note">Email addresses show current primary contacts.</p>'; }
     fc_admin_table($rows, ['occurred_at' => 'Time (UTC)', 'actor_name' => 'Actor', 'event_type' => 'Action',
         'target_name' => 'Target', 'old_role' => 'Old role', 'new_role' => 'New role', 'outcome' => 'Result']);
 }

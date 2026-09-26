@@ -27,6 +27,7 @@
 .admin-table th { background: var(--color-surface-soft); font-weight: 700; white-space: nowrap; }
 .admin-table td { min-width: 110px; max-width: 330px; }
 .admin-table tbody tr:hover { background: var(--color-surface-soft); }
+.admin-audit-contact { display: block; color: var(--color-muted); overflow-wrap: anywhere; }
 .admin-facts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--fc-space-4) var(--fc-space-8); margin: 0 0 var(--fc-space-6); }
 .admin-facts dt { font-size: var(--fc-type-supporting); color: var(--color-muted); }
 .admin-facts dd { margin: var(--fc-space-1) 0 0; overflow-wrap: anywhere; }

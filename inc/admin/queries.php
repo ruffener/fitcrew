@@ -133,7 +133,10 @@ function fc_admin_audit_rows(PDO $pdo, string $scope = 'all', int|string $id = 0
         $where = "a.target_type='CREW_INVITATION' AND a.target_id=?"; $args = [(string) $id];
     }
     return fc_admin_rows($pdo, "SELECT a.occurred_at, a.event_type, a.outcome, u.display_name AS actor_name,
-        t.display_name AS target_name,
+        u.public_id AS actor_public_id,
+        (SELECT e.email FROM user_contact_emails e WHERE e.user_id=u.id AND e.removed_at IS NULL AND e.is_primary_for_contact=1 LIMIT 1) AS actor_email,
+        t.display_name AS target_name, t.public_id AS target_public_id,
+        (SELECT e.email FROM user_contact_emails e WHERE e.user_id=t.id AND e.removed_at IS NULL AND e.is_primary_for_contact=1 LIMIT 1) AS target_email,
         CASE WHEN a.event_type IN ('ADMIN_ROLE_GRANTED','ADMIN_ROLE_REVOKED','ADMIN_SUPER_BOOTSTRAPPED')
             THEN JSON_UNQUOTE(JSON_EXTRACT(a.metadata_json, '$.old_role')) ELSE NULL END AS old_role,
         CASE WHEN a.event_type IN ('ADMIN_ROLE_GRANTED','ADMIN_ROLE_REVOKED','ADMIN_SUPER_BOOTSTRAPPED')
