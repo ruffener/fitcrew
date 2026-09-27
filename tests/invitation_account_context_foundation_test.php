@@ -9,6 +9,14 @@ function iac_denied(callable $call): void {
     try { $call(); } catch (DomainException|InvalidArgumentException) { return; }
     throw new RuntimeException('Unsafe account switch was permitted.');
 }
+function iac_source_order(string $source, array $steps, string $message): void {
+    $offset=0;
+    foreach ($steps as $step) {
+        $position=strpos($source,$step,$offset);
+        iac_assert($position!==false,$message . ': ' . $step);
+        $offset=$position+strlen($step);
+    }
+}
 $pdo=fc_db(); $pdo->beginTransaction();
 try {
     $_ENV['SESSION_IDLE_SECONDS']='3600'; $_ENV['SESSION_ABSOLUTE_SECONDS']='86400';
@@ -29,13 +37,9 @@ try {
     $draft=fc_challenge_rule_current_draft($pdo,$challenge['id']);
     fc_challenge_rule_publish($pdo,$owner['id'],$challenge['id'],(int)$draft['id']);
     $invitation=fc_crew_invitation_create($pdo,$owner['id'],$crew['id'],$challenge['id'],$otherEmail);
-    $publicId=fc_new_public_id(); $binding=fc_auth_browser_binding();
-    $pdo->prepare("INSERT INTO auth_invitation_continuations (public_id,purpose,invitation_public_id,invitation_generation,browser_session_binding_hash,continuation_status,authenticated_user_id,authenticated_session_id,authenticated_at,expires_at) VALUES(?,?,?,?,?,'AUTHENTICATED',?,?,CURRENT_TIMESTAMP(6),DATE_ADD(CURRENT_TIMESTAMP(6),INTERVAL 15 MINUTE))")
-        ->execute([$publicId,FC_AUTH_CREW_INVITATION_PURPOSE,$invitation['public_id'],0,fc_secret_evidence_hash($binding),$owner['id'],$session['id']]);
-    $_SESSION[FC_AUTH_CREW_INVITATION_SESSION_KEY]=$publicId;
-    $continuation=fc_auth_crew_invitation_continuation_current($pdo);
-    iac_assert($continuation!==null,'Fixture lacks authenticated continuation.');
-    $signedInUser=$owner; $signedInEmail=fc_current_account_email($pdo); $accountSwitchReady=true;
+    iac_assert(fc_auth_crew_invitation_continuation_session_public_id()===null,'Public review fixture must not require an Auth continuation.');
+    $signedInUser=$owner; $signedInEmail=fc_current_account_email($pdo);
+    $recipientEmail=''; $emailContext=null; $profileRequired=false; $accountSwitchRequired=false;
     $review=fc_challenge_invitation_review($pdo,(string)$invitation['public_id'],0);
     iac_assert($review!==null,'Challenge invitation review unavailable.');
     ob_start(); require fc_path('views/public/crew_invitation.php'); $html=ob_get_clean();
@@ -44,12 +48,70 @@ try {
     iac_assert($button!==null && !$button->hasAttribute('disabled'),'Current signed-in account cannot make explicit Challenge acceptance.');
     iac_assert(str_contains($html,$ownerEmail),'Current canonical verified FitCrew email not visible.');
     iac_assert(!str_contains($html,$otherEmail),'Invitation delivery email must not be presented as signed-in identity.');
-    iac_assert($xpath->query('//form[@action="/auth/invitation/switch-account.php"]/input[@name="csrf_token"]')->length===1,'Switch is not a protected POST form.');
+    // The public review delegates to Website; it does not need an Auth-ready flag.
+    foreach ([false,true] as $accountSwitchRequired) {
+        ob_start(); require fc_path('views/public/crew_invitation.php'); $switchHtml=ob_get_clean();
+        $switchDom=new DOMDocument(); @$switchDom->loadHTML($switchHtml); $switchXpath=new DOMXPath($switchDom);
+        $forms=$switchXpath->query('//form[input[@name="action" and @value="use_different_account"]]');
+        iac_assert($forms->length===($accountSwitchRequired ? 2 : 1),'Review/conflict account-switch control missing.');
+        foreach ($forms as $form) {
+            iac_assert(strtolower($form->getAttribute('method'))==='post' && $form->getAttribute('action')==='/crew-invite.php','Public account switch must POST to Website.');
+            $tokens=$switchXpath->query('./input[@type="hidden" and @name="csrf_token"]',$form);
+            iac_assert($tokens->length===1 && fc_validate_csrf($tokens->item(0)->getAttribute('value')),'Public account-switch CSRF evidence is invalid.');
+            iac_assert($switchXpath->query('./input[@type="hidden" and @name="action" and @value="use_different_account"]',$form)->length===1,'Public switch action must be submitted.');
+        }
+        iac_assert(!str_contains($switchHtml,'/auth/invitation/switch-account.php'),'Public review bypasses Website switch orchestration.');
+    }
+    iac_assert(fc_auth_crew_invitation_continuation_session_public_id()===null,'Rendering the public review issued Auth authority.');
 
+    // Source contract complements the real view and database proofs below.
+    // Entry points exit/redirect; do not execute a controller inside this rollback fixture.
+    $controller=file_get_contents(fc_path('crew-invite.php'));
+    $switchStart=strpos($controller,"if (\$action === 'use_different_account') {");
+    $switchEnd=strpos($controller,"if (\$action === 'complete_profile') {");
+    iac_assert($switchStart!==false && $switchEnd!==false && $switchEnd>$switchStart,'Website switch branch missing.');
+    iac_source_order(substr($controller,0,$switchStart),[
+        'if (fc_is_post()) {',"if (!fc_validate_csrf(\$_POST['csrf_token'] ?? null)) {",
+        'fc_response_code(403);',"exit('Forbidden');",
+        '$review = fc_challenge_invitation_review_current($pdo);','if ($review === null) {','throw new DomainException(',
+    ],'Website must protect the POST and revalidate the current review before switching');
+    $switchSource=substr($controller,$switchStart,$switchEnd-$switchStart);
+    iac_source_order($switchSource,[
+        'fc_auth_crew_invitation_continuation_issue(',"(string) \$review['invitation_public_id']",
+        "(int) \$review['generation']","(string) \$review['expires_at']",
+        'if (fc_is_logged_in()) {','$currentUser = fc_current_user();',
+        'fc_auth_crew_invitation_continuation_bind_existing_session($pdo, $currentUser);',
+        '<form id="fitcrew-switch" method="post" action="/auth/invitation/switch-account.php">',
+        '<?= fc_csrf_input() ?>','</form>',"fc_redirect((string) \$auth['next_path']);",
+    ],'Website must issue/bind the reviewed invitation before the protected Auth handoff');
+    foreach (['fc_auth_crew_invitation_prepare_account_switch(', 'fc_session_revoke(', 'session_regenerate_id(', 'raw_token', 'token_hash', 'invited_email'] as $forbidden) {
+        iac_assert(!str_contains($switchSource,$forbidden),'Website switch crossed the Auth boundary: '.$forbidden);
+    }
+    $authSwitch=file_get_contents(fc_path('auth/invitation/switch-account.php'));
+    iac_source_order($authSwitch,[
+        "if (!fc_is_post()) { http_response_code(405); exit('Method not allowed.'); }",
+        "fc_email_magic_link_completion_origin_valid(\$_SERVER['HTTP_ORIGIN'] ?? null)",
+        "|| !fc_validate_csrf(\$_POST['csrf_token'] ?? null)", 'http_response_code(403); exit(',
+        '$pdo->beginTransaction();','fc_auth_crew_invitation_prepare_account_switch($pdo, $binding);',
+        '$pdo->commit();','session_regenerate_id(true)', '$_SESSION = [',
+        "'fitcrew_auth_browser_binding' => \$binding", "FC_AUTH_CREW_INVITATION_SESSION_KEY => \$prepared['public_id']",
+        "fc_redirect('/login.php');",
+    ],'Auth must guard the switch and commit before replacing the browser authority');
 
+    // Retain the transactional Auth-service fixture for rejection and rollback proofs.
+    $publicId=fc_new_public_id(); $binding=fc_auth_browser_binding();
+    $pdo->prepare("INSERT INTO auth_invitation_continuations (public_id,purpose,invitation_public_id,invitation_generation,browser_session_binding_hash,continuation_status,authenticated_user_id,authenticated_session_id,authenticated_at,expires_at) VALUES(?,?,?,?,?,'AUTHENTICATED',?,?,CURRENT_TIMESTAMP(6),DATE_ADD(CURRENT_TIMESTAMP(6),INTERVAL 15 MINUTE))")
+        ->execute([$publicId,FC_AUTH_CREW_INVITATION_PURPOSE,$invitation['public_id'],0,fc_secret_evidence_hash($binding),$owner['id'],$session['id']]);
+    $_SESSION[FC_AUTH_CREW_INVITATION_SESSION_KEY]=$publicId;
+    $continuation=fc_auth_crew_invitation_continuation_current($pdo);
+    iac_assert($continuation!==null,'Fixture lacks authenticated continuation.');
     $beforeSession=$_SESSION;
     $countUsers=(int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
     $countClaims=(int)$pdo->query('SELECT COUNT(*) FROM auth_invitation_admission_claims')->fetchColumn();
+    $countMemberships=(int)$pdo->query('SELECT COUNT(*) FROM crew_memberships')->fetchColumn();
+    $countParticipations=(int)$pdo->query('SELECT COUNT(*) FROM challenge_participations')->fetchColumn();
+    $invitationQuery=$pdo->prepare('SELECT * FROM crew_invitations WHERE public_id=?');
+    $invitationQuery->execute([$invitation['public_id']]); $beforeInvitation=$invitationQuery->fetch(PDO::FETCH_ASSOC);
     $newBinding=bin2hex(random_bytes(32));
     // All rejection branches leave the original session and continuation intact.
     iac_denied(fn()=>fc_auth_crew_invitation_prepare_account_switch($pdo,$binding));
@@ -78,7 +140,12 @@ try {
     iac_assert($fresh['expires_at']<=$old['expires_at'] && $fresh['invitation_public_id']===$old['invitation_public_id'],'Switch changed invitation or extended expiry.');
     iac_assert(hash_equals($fresh['browser_session_binding_hash'],fc_secret_evidence_hash($newBinding)),'Fresh browser binding absent.');
     iac_assert(fc_session_record_resolve_active($pdo,session_id(),3600)===null,'Old session remains authorized.');
+    iac_denied(fn()=>fc_auth_crew_invitation_prepare_account_switch($pdo,bin2hex(random_bytes(32))));
     iac_assert((int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn()===$countUsers && (int)$pdo->query('SELECT COUNT(*) FROM auth_invitation_admission_claims')->fetchColumn()===$countClaims,'Switch created account or consumed admission.');
+    $invitationQuery->execute([$invitation['public_id']]);
+    iac_assert($invitationQuery->fetch(PDO::FETCH_ASSOC)===$beforeInvitation,'Switch changed the product invitation.');
+    iac_assert((int)$pdo->query('SELECT COUNT(*) FROM crew_memberships')->fetchColumn()===$countMemberships,'Switch created Crew membership.');
+    iac_assert((int)$pdo->query('SELECT COUNT(*) FROM challenge_participations')->fetchColumn()===$countParticipations,'Switch created Challenge participation.');
     $_SESSION=['fitcrew_auth_browser_binding'=>$newBinding,FC_AUTH_CREW_INVITATION_SESSION_KEY=>$prepared['public_id']];
     iac_assert(fc_auth_crew_invitation_continuation_pending_for_login($pdo)!==null,'New browser cannot resume sign-in.');
     foreach (['existing'=>$otherEmail, 'new'=>'new-mailbox-'.$suffix.'@aol.com'] as $kind=>$mailbox) {
@@ -97,6 +164,7 @@ try {
         $membership=$pdo->prepare('SELECT COUNT(*) FROM crew_memberships WHERE crew_id=? AND user_id=?');
         $membership->execute([$crew['id'],$login['user']['id']]);
         iac_assert((int)$membership->fetchColumn()===0,'Authentication silently joined the Crew.');
+        iac_assert((int)$pdo->query('SELECT COUNT(*) FROM challenge_participations')->fetchColumn()===$countParticipations,'Switched login silently entered the Challenge.');
         $pdo->exec('ROLLBACK TO SAVEPOINT switched_login');
     }
     $_SESSION['fitcrew_auth_browser_binding']=$binding;
@@ -117,7 +185,7 @@ try {
     fc_crew_membership_add_existing($pdo,$owner['id'],$crew['id'],$other['id']);
     iac_assert(fc_product_context($pdo,$other['id'])['challenge']===null,'Context granted Challenge access without participation.');
     $pdo->rollBack();
-    fwrite(STDOUT,"Invitation account/context foundation: PASS\n- self-only verified email and explicit account/destination labels; disabled existing-member button\n- switch revalidation, fresh anonymous binding, session revocation, replay denial, no expiry extension\n- existing and new EMAIL account after switch returns to invitation; no auto-membership
+    fwrite(STDOUT,"Invitation account/context foundation: PASS\n- self-only verified email and explicit account/destination labels\n- review/conflict forms: valid CSRF POST to Website with use_different_account\n- Website revalidation/continuation issue and binding before protected POST handoff to Auth\n- Auth POST/Origin/CSRF guards; commit before browser session replacement\n- switch revalidation, fresh anonymous binding, session revocation, replay denial, no expiry extension\n- existing and new EMAIL account after switch returns to invitation; no auto-membership or participation
 - cancellation/rotation/expiry/revocation denial and rollback-safe authority\n- sole current-Challenge repair, second-current denial, explicit selection preservation, access guards\n- no account, admission, participation or invitation consumption by switching; fixtures rolled back\n");
 } catch(Throwable $e) {
     if($pdo->inTransaction()) $pdo->rollBack();
