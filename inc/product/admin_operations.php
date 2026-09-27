@@ -208,7 +208,7 @@ function fc_product_admin_challenge_allowed(array $actor, array $challenge): arr
         $allowed = ['edit_name','edit_rule_draft','remove_participant','end','archive','unarchive'];
     }
     if ((string)$challenge['lifecycle_status'] === 'COMPLETED') {
-        $allowed = array_values(array_intersect($allowed, ['edit_name','archive','unarchive']));
+        $allowed = array_values(array_intersect($allowed, ['edit_name','archive']));
     }
     return $allowed;
 }
@@ -301,13 +301,18 @@ function fc_product_admin_crew_mutate(PDO $pdo, string $crewPublicId, string $op
     try {
         $actor = fc_product_admin_actor($pdo);
         $crew = fc_product_admin_lock_crew_public($pdo,$crewPublicId); $crewId=(int)$crew['id'];
-        if (!in_array($operation, fc_product_admin_crew_allowed($actor,$crew), true)) throw new DomainException('crew_operation_denied');
+        // Current role authorization applies to both new requests and receipt replay.
+        // Archive/restore state eligibility applies only to a new mutation below.
+        if (!fc_product_admin_is_super($actor) && $operation !== 'edit') throw new DomainException('crew_operation_denied');
         $prior = fc_product_admin_receipt($pdo,(int)$actor['id'],'CREW',$crewPublicId,$requestKey);
         if ($prior !== null) {
             if (!hash_equals((string)$prior['request_digest'],$digest)) throw new DomainException('idempotency_conflict');
+            // The target/receipt lock may have waited past the session expiry.
+            fc_product_admin_actor($pdo);
             $result=json_decode((string)$prior['result_json'],true,512,JSON_THROW_ON_ERROR); $pdo->commit();
             return $result+['replayed'=>true];
         }
+        if (!in_array($operation, fc_product_admin_crew_allowed($actor,$crew), true)) throw new DomainException('crew_operation_denied');
         $state=fc_product_admin_crew_state($pdo,$crew);
         fc_product_admin_assert_revision($revision,$state['revision'],'stale_crew_state');
         $before=$after=$extra=[];

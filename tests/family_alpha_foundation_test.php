@@ -66,6 +66,10 @@ try {
         fa_assert($o['offer_status']==='PENDING','Invite must be available in '.$stage);
         fc_challenge_offer_decide($pdo,$owner['id'],$id,'cancel',(string)$o['public_id']);
     }
+    // Independent fixture for ordinary archive/unarchive; never inherit the loop's last stage.
+    $pdo->prepare("UPDATE challenges SET lifecycle_status='FORMING_CREW',completed_at=NULL WHERE id=:id")->execute([':id'=>$id]);
+    fc_crew_current_challenge_restore($pdo,$crew['id'],$id);
+    fa_assert(fc_challenge_is_current_for_crew($pdo,$crew['id'],$id),'Non-terminal archive fixture must have current-Challenge authority.');
     fc_challenge_offer_participation($pdo,$owner['id'],$id,$other['public_id']);$oldOffer=fc_challenge_offer_for_user($pdo,$id,$other['id']);
     fc_challenge_offer_decide($pdo,$owner['id'],$id,'cancel',(string)$oldOffer['public_id']);
     fa_denied(fn()=>fc_challenge_accept_participation($pdo,$other['id'],$id,(int)$rule['id'],true,[],(string)$oldOffer['public_id']),'Cancelled offer replay');
@@ -80,8 +84,10 @@ try {
     fa_denied(fn()=>fc_challenge_manage($pdo,$owner['id'],$id,'rename',['display_name'=>'Stale write','expected_revision'=>0]),'Stale Owner form');
     fc_challenge_manage($pdo,$owner['id'],$id,'archive');
     fa_assert(fc_challenges_for_user($pdo,$owner['id'])===[],'Archive must remove normal active listing.');
+    fa_assert(fc_crew_current_challenge($pdo,$crew['id'])===null,'Archive must release current-Challenge authority.');
     fc_challenge_manage($pdo,$owner['id'],$id,'unarchive');
     fa_assert(count(fc_challenges_for_user($pdo,$owner['id']))===1,'Unarchive restores listing when no other hidden condition exists.');
+    fa_assert(fc_challenge_is_current_for_crew($pdo,$crew['id'],$id),'Non-terminal unarchive must restore current-Challenge authority.');
     $priorLifecycle=fc_challenge_require_owner($pdo,$owner['id'],$id)['lifecycle_status'];
     fc_challenge_manage($pdo,$owner['id'],$id,'end',['reason'=>'Alpha proof']);
     $ended=fc_challenge_management_state($pdo,$id);
@@ -120,6 +126,20 @@ try {
     fc_challenge_delete_draft($pdo,$owner['id'],$pristine['id']);
     $q=$pdo->prepare('SELECT COUNT(*) FROM challenges WHERE id=:id');$q->execute([':id'=>$pristine['id']]);fa_assert((int)$q->fetchColumn()===0,'Pristine physical deletion must remain safe.');
     fa_denied(fn()=>fc_challenge_delete_draft($pdo,$owner['id'],$id),'History-bearing physical deletion');
+    // Separate terminal history fixture: archive is permitted; restoring as current is not.
+    $terminal=fc_challenge_create($pdo,$owner['id'],$crew['id'],'Completed historical fixture');
+    $terminalId=$terminal['id'];
+    $pdo->prepare("UPDATE challenges SET lifecycle_status='COMPLETED',completed_at=CURRENT_TIMESTAMP(6) WHERE id=:id")->execute([':id'=>$terminalId]);
+    fc_crew_current_challenge_release($pdo,$crew['id'],$terminalId);
+    fc_challenge_manage($pdo,$owner['id'],$terminalId,'archive');
+    $terminalControls=fc_challenge_management_state($pdo,$terminalId);
+    $terminalEvents=fa_count($pdo,'challenge_product_events',$terminalId);
+    fa_assert($terminalControls['archived_at']!==null,'Completed historical Challenge may be archived.');
+    fa_denied(fn()=>fc_challenge_manage($pdo,$owner['id'],$terminalId,'unarchive'),'Completed Challenge restoration');
+    fa_assert(fc_crew_current_challenge($pdo,$crew['id'])===null,'Completed Challenge must not regain current authority.');
+    fa_assert(fc_challenge_management_state($pdo,$terminalId)===$terminalControls && fa_count($pdo,'challenge_product_events',$terminalId)===$terminalEvents,'Denied terminal restore must preserve controls and history.');
+    fa_assert(fc_challenge_require_owner($pdo,$owner['id'],$terminalId)['lifecycle_status']==='COMPLETED' && fa_count($pdo,'challenge_rule_versions',$terminalId)===1,'Terminal lifecycle and Rules must survive denied restoration.');
+    fwrite(STDOUT,"- Explicit non-terminal archive/unarchive and terminal restoration denial: PASS\n");
     $pdo->rollBack();
     fwrite(STDOUT,"Family Alpha B-D database foundation proof: PASS\n- Owner invite stays Pending / no consent or access grant: PASS\n- Personal acceptance / stale Rules and offer replay protection / idempotence: PASS\n- Late-lifecycle owner invitations / personal decline: PASS\n- Owner end/archive/delete separated from scoring and history: PASS\n- Withdrawal/rejoin intervals / original joined_at / receipt preservation: PASS\n- Self-only category privacy / Owner and Crew-member negative access: PASS\n- Own-history access after Crew removal / safe participant read fields: PASS\n- Pristine hard-delete and history-bearing protection: PASS\n- Test data rolled back: PASS\n");
 } catch (Throwable $error) {

@@ -70,7 +70,7 @@ fc_product_admin_challenge_unarchive(PDO $pdo, string $challengePublicId, string
 | Remove active participant | No | Yes |
 | End / archive / unarchive | No | Yes |
 
-Completed Challenges permit only noncompetitive name correction and archive/unarchive presentation controls. Competitive Rule settings are locked from this service after completion.
+COMPLETED is terminal history. Completed Challenges permit only noncompetitive name correction and archive. `unarchive` restores current-Challenge authority, so it is neither advertised nor permitted for a COMPLETED Challenge. Showing archived completed history again would require a separate presentation operation; this service does not provide one. Competitive Rule settings remain locked after completion.
 
 Supported Rule-draft fields are:
 
@@ -108,6 +108,25 @@ Successful operations use specific `ADMIN_*` audit event names and include:
 Denied/failed governed operations write best-effort `PRODUCT_ADMIN_OPERATION_REJECTED` audit evidence without replacing the original failure if denial-audit storage itself fails.
 
 `0540_product_admin_operations.sql` stores only idempotency receipts. It does not duplicate Crew, Challenge, membership, participation, Rule, invitation or audit truth.
+
+Crew mutations begin a transaction, resolve the canonical current actor, lock the Crew, and verify current platform-role authority for the operation class **before** looking up the actor/request-key receipt. An exact digest match returns the original successful result with `replayed=true`, without another domain mutation or success audit. A changed target, operation, payload, revision or reason under that key fails `idempotency_conflict`. Current mutable transition eligibility and revision checks apply only when no receipt exists. Archive and restore therefore replay successfully after their original transitions, while actor demotion, suspension, identity revocation, session revocation or expiry still denies replay. The session is rechecked after receipt lock waits as well.
+
+## Product gate regression proof
+
+`tests/product_admin_operations_contract_test.php` checks the public contract and completed-Challenge allowed operations without a database.
+
+`tests/product_admin_operations_foundation_test.php` runs actual owner services against a **fresh, empty, fully migrated disposable** `fitcrew_product_admin_test` database on loopback. Install the locked Composer dependencies and apply the existing migrations through 0540 with the normal migration runner to that dedicated database. No new migration is needed. The test never loads `.env`, deletes existing rows, or uses the application connection. Configure only its process environment:
+
+```text
+FC_PRODUCT_ADMIN_TEST_DSN=mysql:host=127.0.0.1;port=<local-port>;dbname=fitcrew_product_admin_test;charset=utf8mb4
+FC_PRODUCT_ADMIN_TEST_USER=<disposable-db-user>
+FC_PRODUCT_ADMIN_TEST_PASSWORD=<disposable-db-password>
+php tests/product_admin_operations_foundation_test.php
+```
+
+The test rejects an unexpected DSN/database or an existing user population before fixture writes. It leaves synthetic committed evidence in the disposable database because these services own their transactions; recreate only that test database before another run. Proof covers archive/restore exact replay with byte-equivalent domain rows, unchanged receipt/audit rows, changed-digest conflict, current authority loss, stale/new requests, every Crew/Challenge mutation class's receipt replay, ownership/history boundaries, and terminal Challenge operation/runtime agreement.
+
+`tests/family_alpha_foundation_test.php` remains the rollback-based protected Product regression. After the all-lifecycle invitation loop it explicitly establishes FORMING_CREW and current-Challenge authority for ordinary archive/unarchive, then separately proves a COMPLETED historical fixture can be archived but cannot return as current. The existing `fc_challenge_manage` and `fc_crew_current_challenge_restore` runtime implementations are unchanged.
 
 ## Explicit exclusions
 

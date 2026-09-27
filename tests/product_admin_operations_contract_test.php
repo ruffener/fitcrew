@@ -59,6 +59,11 @@ pa_assert(str_contains($docs, 'no Admin direct-add/reactivate participant operat
 pa_assert(str_contains($docs, 'does **not** silently publish the draft'), 'published/acceptance history boundary documented');
 pa_assert(str_contains($schema, 'ADMIN-2B / ADMIN-2C Product owner operations (0540)'), 'schema plan records 0540 ownership');
 
+require_once $root . '/inc/product/admin_operations.php';
+pa_assert(fc_product_admin_challenge_allowed(['platform_role_code'=>'PLATFORM_SUPER_ADMIN'], ['lifecycle_status'=>'COMPLETED']) === ['edit_name','archive'], 'completed Super Admin operations exclude restore to current');
+pa_assert(fc_product_admin_challenge_allowed(['platform_role_code'=>'PLATFORM_ADMIN'], ['lifecycle_status'=>'COMPLETED']) === [], 'completed Challenge preserves ordinary Admin restriction');
+pa_assert(in_array('unarchive', fc_product_admin_challenge_allowed(['platform_role_code'=>'PLATFORM_SUPER_ADMIN'], ['lifecycle_status'=>'FORMING_CREW']), true), 'non-terminal Super Admin unarchive remains available');
+
 foreach (['admin/','inc/admin/','views/admin/','inc/auth/','inc/identity/','inc/security/'] as $forbidden) {
     pa_assert(!str_contains($docs, "modify `{$forbidden}"), "documentation does not authorize {$forbidden} edits");
 }
@@ -69,3 +74,4 @@ echo "- stale-state + idempotency + reason + audit contract: PASS\n";
 echo "- ownership/removal/history boundaries: PASS\n";
 echo "- versioned Rule correction / no silent publication: PASS\n";
 echo "- invitation/participation/lifecycle boundaries preserved: PASS\n";
+echo "- completed-Challenge operation contract: PASS\n";
