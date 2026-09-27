@@ -24,8 +24,8 @@
     <aside class="admin-sidebar">
         <p class="sidebar-label">Admin</p>
         <nav class="sidebar-nav" aria-label="Admin navigation">
-        <?php foreach (['index'=>'Dashboard','users'=>'Users','crews'=>'Crews','invitations'=>'Invitations','authentication'=>'Authentication','system'=>'System'] as $key=>$label): ?>
-            <?php $selected = $route === $key || ($key === 'users' && $route === 'user') || ($key === 'crews' && $route === 'crew') || ($key === 'invitations' && $route === 'invitation'); ?>
+        <?php foreach (['index'=>'Dashboard','users'=>'Users','crews'=>'Crews','challenges'=>'Challenges','invitations'=>'Invitations','authentication'=>'Authentication','system'=>'System'] as $key=>$label): ?>
+            <?php $selected = $route === $key || ($key === 'users' && $route === 'user') || ($key === 'crews' && $route === 'crew') || ($key === 'challenges' && $route === 'challenge') || ($route === 'operation' && isset($operation['kind']) && $key === $operation['kind'].'s') || ($key === 'invitations' && $route === 'invitation'); ?>
             <a href="/admin/<?= $key === 'index' ? '' : $key . '.php' ?>" <?= $selected ? 'class="is-current" aria-current="page"' : '' ?>><?= fc_e($label) ?></a>
         <?php endforeach; ?>
         <?php if (fc_admin_is_super($actor)): ?><a href="/admin/admins.php" <?= in_array($route,['admins','role'],true) ? 'class="is-current" aria-current="page"' : '' ?>>Admins</a><?php endif; ?>
@@ -33,7 +33,7 @@
         <form method="post" action="/logout.php"><?= fc_csrf_input() ?><button class="admin-signout" type="submit">Sign out</button></form>
     </aside>
 <?php endif; ?>
-    <main id="admin-content" class="admin-content">
+    <main id="admin-content" class="admin-content" tabindex="-1">
         <?php require fc_path('views/partials/flash.php'); ?>
         <div class="admin-page-heading"><p class="eyebrow">FitCrew Admin</p><h1><?= fc_e($title) ?></h1></div>
         <?php require fc_path($contentView); ?>

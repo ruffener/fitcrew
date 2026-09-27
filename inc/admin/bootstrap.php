@@ -10,3 +10,8 @@ require_once __DIR__ . '/roles.php';
 require_once __DIR__ . '/queries.php';
 require_once __DIR__ . '/presentation.php';
 require_once __DIR__ . '/controller.php';
+
+require_once dirname(__DIR__) . '/auth/user_operations.php';
+require_once dirname(__DIR__) . '/product/bootstrap.php';
+require_once __DIR__ . '/operations.php';
+require_once __DIR__ . '/operation_forms.php';

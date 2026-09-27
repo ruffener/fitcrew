@@ -69,3 +69,11 @@
 .admin-signout:hover { background: var(--color-surface-soft); text-decoration: underline; }
 .admin-account { min-width: 0; overflow-wrap: anywhere; }
 .admin-body .site-header { position: static; }
+
+.admin-operation-form { display:grid; gap:var(--fc-space-3); }
+.admin-operation-form input:not([type=hidden]):not([type=checkbox]), .admin-operation-form select { width:100%; min-width:0; max-width:100%; min-height:var(--fc-control-input); padding:var(--fc-space-3); border:1px solid var(--color-border); border-radius:var(--fc-radius-control); background:var(--color-surface); color:inherit; font:inherit; }
+.admin-operation-form label { font-weight:600; }
+.admin-operation-form :focus-visible { outline:var(--fc-focus-outline); outline-offset:var(--fc-focus-offset); }
+.admin-operation-effect { border-left:3px solid var(--color-brand); padding-left:var(--fc-space-4); }
+.admin-actions { flex-wrap:wrap; }
+.admin-actions > * { max-width:100%; white-space:normal; overflow-wrap:anywhere; }

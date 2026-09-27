@@ -38,6 +38,14 @@ function fc_admin_list(PDO $pdo, string $kind, string $query, int $page): array
             WHERE c.display_name LIKE ? ESCAPE '!' OR c.public_id LIKE ? ESCAPE '!' OR u.display_name LIKE ? ESCAPE '!'
             ORDER BY c.id DESC LIMIT 51 OFFSET $offset", [$like, $like, $like]);
     }
+    if ($kind === 'challenges') {
+        return fc_admin_rows($pdo, "SELECT ch.public_id,ch.display_name,ch.lifecycle_status,ch.operational_state,ch.created_at,c.display_name AS crew_name,u.display_name AS owner_name,
+            CASE WHEN oc.archived_at IS NULL THEN 'No' ELSE 'Yes' END AS archived
+            FROM challenges ch JOIN crews c ON c.id=ch.crew_id JOIN users u ON u.id=ch.owner_user_id
+            LEFT JOIN challenge_owner_controls oc ON oc.challenge_id=ch.id
+            WHERE ch.display_name LIKE ? ESCAPE '!' OR ch.public_id LIKE ? ESCAPE '!' OR c.display_name LIKE ? ESCAPE '!'
+            ORDER BY ch.id DESC LIMIT 51 OFFSET $offset",[$like,$like,$like]);
+    }
     if ($kind === 'invitations') {
         return fc_admin_rows($pdo, "SELECT i.public_id, i.invited_email, i.invitation_status, i.transport_status, i.expires_at,
             c.display_name AS crew_name, ch.display_name AS challenge_name,
@@ -129,6 +137,8 @@ function fc_admin_audit_rows(PDO $pdo, string $scope = 'all', int|string $id = 0
     } elseif ($scope === 'crew') {
         $where = "(a.group_id=? OR (a.target_type='CREW' AND BINARY a.target_id=BINARY (SELECT public_id FROM crews WHERE id=?)))";
         $args = [(int) $id, (int) $id];
+    } elseif ($scope === 'challenge') {
+        $where="a.target_type='CHALLENGE' AND BINARY a.target_id=BINARY ?"; $args=[(string)$id];
     } elseif ($scope === 'invitation') {
         $where = "a.target_type='CREW_INVITATION' AND a.target_id=?"; $args = [(string) $id];
     }
@@ -183,5 +193,12 @@ function fc_admin_system(PDO $pdo): array
         'Super Admin unique index' => (int) $invariant['total'] === 1 ? 'Present' : 'Missing',
         'Super Admin accounts' => (string) $pdo->query("SELECT COUNT(*) FROM users WHERE platform_role_code='PLATFORM_SUPER_ADMIN'")->fetchColumn(),
         'Database clock (UTC)' => (string) $pdo->query('SELECT UTC_TIMESTAMP()')->fetchColumn(),
-        'Console mode' => 'Read-only operations; Super Admin can manage Admin roles'];
+        'Console mode' => 'Governed User, Crew and Challenge operations; Super Admin role management'];
+}
+
+function fc_admin_challenge(PDO $pdo,string $publicId): ?array
+{
+    return fc_admin_one($pdo,'SELECT ch.public_id,ch.display_name,ch.lifecycle_status,ch.operational_state,ch.created_at,ch.completed_at,
+        c.public_id AS crew_public_id,c.display_name AS crew_name,u.public_id AS owner_public_id,u.display_name AS owner_name
+        FROM challenges ch JOIN crews c ON c.id=ch.crew_id JOIN users u ON u.id=ch.owner_user_id WHERE ch.public_id=?',[$publicId]);
 }

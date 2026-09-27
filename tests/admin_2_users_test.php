@@ -1,0 +1,41 @@
+<?php
+declare(strict_types=1);
+require __DIR__.'/admin_2_support.php';
+$p=a2_db();$f=a2_fixture($p); $target=$f['user']['public_id']; a2_login($f,'admin');
+$t=a2_ticket($p,'user',$target,'profile',['display_name'=>'Same Name','timezone'=>'UTC','locale'=>'en']);
+$r=fc_admin_operation_execute($p,$t);$again=fc_admin_operation_execute($p,$t);
+a2_assert($again['replayed'] && $r['audit_id']===$again['audit_id'],'Profile owner receipt replays without duplicate audit');
+a2_denied(fn()=>a2_apply($p,'user',$f['admin']['public_id'],'profile',['display_name'=>'No']),'user_operation_denied');
+a2_denied(fn()=>a2_apply($p,'user',$target,'suspend'),'user_operation_denied');
+a2_login($f,'super');
+foreach(['profile','end_sessions','suspend','restore','primary_contact','replacement_contact'] as $op) a2_denied(fn()=>a2_apply($p,'user',$f['super']['public_id'],$op),'user_operation_denied');
+a2_apply($p,'user',$f['admin']['public_id'],'profile',['display_name'=>'Admin corrected']);
+a2_denied(fn()=>a2_apply($p,'user',$target,'primary_contact',['contact_id'=>$f['unverified']['id']]),'verified_owned_contact_required');
+a2_denied(fn()=>a2_apply($p,'user',$target,'primary_contact',['contact_id'=>$f['foreign']['id']]),'verified_owned_contact_required');
+a2_apply($p,'user',$target,'primary_contact',['contact_id'=>$f['alternate']['id']]);
+a2_assert($p->query('SELECT email FROM user_contact_emails WHERE user_id=3 AND is_primary_for_contact=1')->fetchColumn()==='alternate@example.test','Primary selection uses existing verified same-user contact');
+a2_denied(fn()=>a2_apply($p,'user',$target,'replacement_contact',['email'=>'other@example.test']),'account_reconciliation_required');
+$stale=a2_ticket($p,'user',$target,'profile',['display_name'=>'Old form']);a2_apply($p,'user',$target,'profile',['display_name'=>'New value']);
+a2_denied(fn()=>fc_admin_operation_execute($p,$stale),'stale_user_state');
+a2_apply($p,'user',$target,'end_sessions');
+a2_assert((int)$p->query('SELECT COUNT(*) FROM user_sessions WHERE user_id=3 AND revoked_at IS NULL')->fetchColumn()===0,'End sessions revokes durable sessions');
+a2_apply($p,'user',$target,'suspend');a2_apply($p,'user',$target,'restore');
+a2_assert($p->query('SELECT account_status FROM users WHERE id=3')->fetchColumn()==='ACTIVE' && (int)$p->query('SELECT COUNT(*) FROM user_sessions WHERE user_id=3 AND revoked_at IS NULL')->fetchColumn()===0,'Restore leaves prior sessions revoked');
+$stale=a2_ticket($p,'user',$target,'profile',['display_name'=>'Forbidden']);$p->exec("UPDATE users SET account_status='SUSPENDED' WHERE id=1");
+a2_denied(fn()=>fc_admin_operation_execute($p,$stale),'user_operation_denied');
+[$status,$message]=fc_admin_operation_error(new DomainException('account_reconciliation_required'));
+a2_assert($status===409 && str_contains($message,'ACCOUNT RECONCILIATION REQUIRED'),'Contact conflict safely explained');
+$f=a2_fixture($p);$h=a2_start_http($f);
+try {
+    $review=a2_review($h,$f,'admin','user',$f['user']['public_id'],'profile',['display_name'=>'HTTP Updated','timezone'=>'UTC','locale'=>'en']);
+    a2_assert($review['status']===200 && str_contains($review['body'],'Requested change'),'Profile review precedes mutation');
+    a2_assert($p->query('SELECT display_name FROM users WHERE id=3')->fetchColumn()==='user','Review is read-only');
+    $result=a2_confirm($h,$f,'admin',$review);a2_assert($result['status']===303,'Confirmed Admin profile edit uses owner service');
+    a2_assert(a2_confirm($h,$f,'admin',$review)['status']===303,'HTTP exact confirmation retry is idempotent');
+    preg_match('/Location: ([^\n\r]+)/',$result['headers'],$m);$receipt=a2_http($h,$m[1],$f['admin']['raw']);
+    a2_assert($receipt['status']===200 && str_contains($receipt['body'],'Operation receipt'),'Safe receipt rendered');
+    a2_assert(!str_contains($receipt['body'],'session_id_hash') && !str_contains($receipt['body'],'request_key'),'Receipt omits internal evidence');
+    a2_assert(a2_http($h,'/admin/user.php?id='.$f['super']['public_id'],$f['super']['raw'])['status']===200,'Protected Super detail remains readable');
+    a2_assert(a2_http($h,'/admin/operation.php?kind=user&target='.$f['super']['public_id'].'&action=profile',$f['super']['raw'])['status']===403,'Crafted Super target denied');
+} finally { a2_stop_http($h); }
+echo "ADMIN-2A CONSOLE PROOF: PASS\n";

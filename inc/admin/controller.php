@@ -9,7 +9,7 @@ function fc_admin_dispatch(string $route): void
     header('X-Content-Type-Options: nosniff');
     header('X-Frame-Options: DENY');
     header('X-Robots-Tag: noindex, nofollow');
-    $titles = ['index' => 'Dashboard', 'users' => 'Users', 'user' => 'User detail', 'crews' => 'Crews',
+    $titles = ['challenges'=>'Challenges','challenge'=>'Challenge detail','operation'=>'Review operation', 'index' => 'Dashboard', 'users' => 'Users', 'user' => 'User detail', 'crews' => 'Crews',
         'crew' => 'Crew detail', 'invitations' => 'Invitations', 'invitation' => 'Invitation detail',
         'authentication' => 'Authentication summary', 'system' => 'System', 'admins' => 'Admins', 'role' => 'Confirm Admin role change'];
     $title = $titles[$route] ?? 'Admin';
@@ -27,29 +27,43 @@ function fc_admin_dispatch(string $route): void
         }
         $actor = fc_admin_enter($pdo, $principal, $route, in_array($route, ['admins', 'role'], true));
         $method = fc_request_method();
-        if (!in_array($method, $route === 'role' ? ['GET', 'POST'] : ['GET'], true)) {
-            header('Allow: ' . ($route === 'role' ? 'GET, POST' : 'GET'));
+        if (!in_array($method, in_array($route,['role','operation'],true) ? ['GET', 'POST'] : ['GET'], true)) {
+            header('Allow: ' . (in_array($route,['role','operation'],true) ? 'GET, POST' : 'GET'));
             fc_admin_audit($pdo, (int) $actor['id'], 'ADMIN_REQUEST_REJECTED', 'DENIED', null, null, null, $route, 'method_not_allowed');
             throw new FcAdminDenied('method_not_allowed', 405);
         }
         $contentView = 'views/admin/' . ($route === 'index' ? 'dashboard' : $route) . '.php';
-        if (in_array($route, ['users', 'crews', 'invitations', 'admins'], true)) {
+        if (in_array($route, ['users', 'crews', 'challenges', 'invitations', 'admins'], true)) {
             $query = fc_admin_input($_GET, 'q');
             $pageText = fc_admin_input($_GET, 'page', 5);
             $page = $pageText === '' ? 1 : (ctype_digit($pageText) ? (int) $pageText : 0);
             if ($page < 1 || $page > 10000) { throw new FcAdminDenied('invalid_input', 400); }
             $rows = fc_admin_list($pdo, $route, $query, $page);
             $more = count($rows) > 50; $rows = array_slice($rows, 0, 50);
+        } elseif ($route === 'operation') {
+            $operation=fc_admin_operation_request($pdo,$principal,$method);
+            if(isset($operation['redirect'])) return;
         } elseif ($route === 'index') {
             $stats = fc_admin_dashboard($pdo); $audit = fc_admin_audit_rows($pdo);
         } elseif ($route === 'user') {
             $user = fc_admin_user($pdo, fc_admin_id(fc_admin_input($_GET, 'id', 26)));
             if ($user === null) { throw new FcAdminDenied('not_found', 404); }
             $detail = fc_admin_user_details($pdo, $user);
+            $userOperations=null;
+            if(in_array($user['account_status'],['ACTIVE','SUSPENDED'],true) && in_array($user['platform_role_code'],['USER','PLATFORM_ADMIN'],true)
+                && (fc_admin_is_super($actor) || $user['platform_role_code']==='USER')) {
+                $userOperations=fc_auth_user_operations_snapshot($pdo,$user['public_id']);
+            }
         } elseif ($route === 'crew') {
             $crew = fc_admin_crew($pdo, fc_admin_id(fc_admin_input($_GET, 'id', 26)));
             if ($crew === null) { throw new FcAdminDenied('not_found', 404); }
             $detail = fc_admin_crew_details($pdo, $crew);
+            $crewOperations=fc_product_admin_crew_snapshot($pdo,$crew['public_id']);
+        } elseif ($route === 'challenge') {
+            $challenge=fc_admin_challenge($pdo,fc_admin_id(fc_admin_input($_GET,'id',26)));
+            if($challenge===null) throw new FcAdminDenied('not_found',404);
+            $challengeOperations=fc_product_admin_challenge_snapshot($pdo,$challenge['public_id']);
+            $audit=fc_admin_audit_rows($pdo,'challenge',$challenge['public_id']);
         } elseif ($route === 'invitation') {
             $invitation = fc_admin_invitation($pdo, fc_admin_id(fc_admin_input($_GET, 'id', 26)));
             if ($invitation === null) { throw new FcAdminDenied('not_found', 404); }
@@ -101,6 +115,11 @@ function fc_admin_dispatch(string $route): void
             default => 'Your current account does not have access to this Admin area.',
         };
         $contentView = 'views/admin/error.php';
+    } catch (DomainException|InvalidArgumentException $e) {
+        if ($pdo instanceof PDO && $pdo->inTransaction()) $pdo->rollBack();
+        [$status,$errorMessage]=fc_admin_operation_error($e);
+        http_response_code($status);
+        $contentView='views/admin/error.php';
     } catch (Throwable $e) {
         if ($pdo instanceof PDO && $pdo->inTransaction()) { $pdo->rollBack(); }
         http_response_code(503);
